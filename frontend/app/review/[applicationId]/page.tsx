@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { useFileSystem } from "@/hooks/useFileSystem";
 import DiffView from "@/components/review/DiffView";
 import PreviewView from "@/components/review/PreviewView";
 import {
@@ -17,12 +16,9 @@ import {
 export default function ReviewPage() {
   const params = useParams();
   const applicationId = params.applicationId as string;
-  const { saveFile, hasDirectory } = useFileSystem();
-
   const [result, setResult] = useState<TailorResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [showAtsWarnings, setShowAtsWarnings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [retailoring, setRetailoring] = useState(false);
   const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
@@ -128,12 +124,6 @@ export default function ReviewPage() {
     setManualEdits({});
   };
 
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _resetAll = () => {
-    resetAllDecisions();
-    resetAllEdits();
-  };
-
   // Count summary
   const counts = { accepted: 0, rejected: 0, edited: 0, total: 0 };
   for (const expDecisions of Object.values(decisions)) {
@@ -201,8 +191,8 @@ export default function ReviewPage() {
               .map((m) => m.trim())
               .filter((m) => m)
           );
-        } else if (edu.modules) {
-          modules.push(...edu.modules);
+        } else if (edu.achievements) {
+          modules.push(...edu.achievements);
         }
 
         acceptedChanges[`education_${edu.id}`] = {
@@ -230,82 +220,6 @@ export default function ReviewPage() {
     }
 
     return { acceptedChanges, rejectedChanges };
-  };
-
-  const triggerBrowserDownload = (blob: Blob, filename: string) => {
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = filename;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const exportFile = async (path: string, fallbackName: string) => {
-    const { blob, filename } = await api.downloadFile(path);
-    triggerBrowserDownload(blob, filename || fallbackName);
-    if (hasDirectory) {
-      const company = filename.replace("cv_", "").split("_")[0] || "export";
-      await saveFile(company, filename, blob);
-    }
-  };
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handleSaveAndExport = async () => {
-    if (!result) return;
-    setSaving(true);
-
-    try {
-      const changes = buildChanges();
-      if (changes) {
-        await api.put(`/api/tailor/cv-versions/${result.cv_version_id}/accept-changes`, {
-          accepted_changes: changes.acceptedChanges,
-          rejected_changes: changes.rejectedChanges,
-        });
-        // Clear localStorage after successful save
-        localStorage.removeItem(storageKey);
-        setRecoveredFromStorage(false);
-      }
-
-      const versionId = result.cv_version_id;
-      await exportFile(`/api/export/latex/${versionId}`, "cv.tex");
-
-      alert("CV exported successfully! Check your downloads folder.");
-    } catch (err) {
-      console.error("Export error:", err);
-      alert("Failed to save or export. Check console for details.");
-    } finally {
-      setSaving(false);
-      setExportDropdown(false);
-    }
-  };
-
-
-
-  // eslint-disable-next-line @typescript-eslint/no-unused-vars
-  const _handleDownloadLaTeX = async () => {
-    if (!result) return;
-    setSaving(true);
-
-    try {
-      const changes = buildChanges();
-      if (changes) {
-        await api.put(`/api/tailor/cv-versions/${result.cv_version_id}/accept-changes`, {
-          accepted_changes: changes.acceptedChanges,
-          rejected_changes: changes.rejectedChanges,
-        });
-      }
-
-      await exportFile(`/api/export/latex/${result.cv_version_id}`, "cv.tex");
-    } catch (err) {
-      console.error("LaTeX download failed:", err);
-      alert("Failed to download LaTeX");
-    } finally {
-      setSaving(false);
-      setExportDropdown(false);
-    }
   };
 
   const handleOpenOverleaf = async () => {
@@ -482,44 +396,6 @@ export default function ReviewPage() {
           </button>
         </div>
       </div>
-
-      {/* ATS Warnings Banner */}
-      {atsWarnings.length > 0 && (
-        <div className="rounded-lg border border-amber-200 bg-amber-50">
-          <button
-            onClick={() => setShowAtsWarnings(!showAtsWarnings)}
-            className="flex w-full items-center justify-between p-4"
-          >
-            <div className="flex items-center gap-2">
-              <span className="text-sm font-medium text-amber-800">
-                ATS Score: {atsScore}/100
-              </span>
-              <span className="text-xs text-amber-600">
-                ({atsWarnings.length} warnings)
-              </span>
-            </div>
-            <svg
-              className={`h-4 w-4 text-amber-600 transition-transform ${showAtsWarnings ? "rotate-180" : ""}`}
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-            >
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" />
-            </svg>
-          </button>
-          {showAtsWarnings && (
-            <div className="border-t border-amber-200 p-4 space-y-2">
-              {atsWarnings.map((w, i) => (
-                <div key={i} className="text-sm">
-                  <span className="font-medium text-amber-800">{w.field}:</span>{" "}
-                  <span className="text-amber-700">{w.issue}</span>
-                  <p className="text-xs text-amber-600 mt-0.5">Suggestion: {w.suggestion}</p>
-                </div>
-              ))}
-            </div>
-          )}
-        </div>
-      )}
 
       {/* View Mode Toggle */}
       <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
