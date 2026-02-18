@@ -23,6 +23,7 @@ class Settings(BaseSettings):
     rapidapi_key: str = Field(default="", alias="RAPIDAPI_KEY")
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_service_key: str = Field(default="", alias="SUPABASE_SERVICE_KEY")
+    supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
 
     # ── Database ──
     database_url: str = Field(default="", alias="DATABASE_URL")

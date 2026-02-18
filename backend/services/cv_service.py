@@ -51,6 +51,7 @@ async def parse_and_store_cv(
     file_bytes: bytes,
     filename: str,
     file_type: str,
+    user_id: uuid.UUID,
 ) -> ParseSummary:
     """Full CV upload pipeline: extract text, structure with GPT-4o, store & deduplicate.
 
@@ -74,6 +75,7 @@ async def parse_and_store_cv(
 
     # Store raw upload
     upload = CvUpload(
+        user_id=user_id,
         original_filename=filename,
         file_type=file_type,
         raw_text=raw_text,
@@ -99,6 +101,7 @@ async def parse_and_store_cv(
 
     # Store profile
     profile = CvProfile(
+        user_id=user_id,
         full_name=parsed.profile.full_name,
         email=parsed.profile.email,
         phone=parsed.profile.phone,
@@ -139,6 +142,7 @@ async def parse_and_store_cv(
             reasons.append(f"Low dates confidence: {exp.dates_confidence}")
 
         work_exp = WorkExperience(
+            user_id=user_id,
             upload_source_id=upload.id,
             company=exp.company,
             role_title=exp.role_title,
@@ -159,7 +163,7 @@ async def parse_and_store_cv(
         await db.flush()
 
         try:
-            dedup_result = await deduplicate_experience(db, work_exp)
+            dedup_result = await deduplicate_experience(db, work_exp, user_id)
             if dedup_result.action in ("near_duplicate", "variant"):
                 duplicate_groups.setdefault(str(dedup_result.variant_group_id), [])
                 duplicate_groups[str(dedup_result.variant_group_id)].append(
@@ -199,6 +203,7 @@ async def parse_and_store_cv(
             review_reason = "; ".join(parts)
 
         education = Education(
+            user_id=user_id,
             upload_source_id=upload.id,
             institution=edu.institution, degree=edu.degree, grade=edu.grade,
             date_start=_parse_date(edu.date_start), date_end=_parse_date(edu.date_end),
@@ -222,6 +227,7 @@ async def parse_and_store_cv(
     # Store projects
     for proj in parsed.projects:
         project = Project(
+            user_id=user_id,
             upload_source_id=upload.id,
             name=proj.name, description=proj.description,
             date_start=_parse_date(proj.date_start), date_end=_parse_date(proj.date_end),
@@ -233,7 +239,7 @@ async def parse_and_store_cv(
         await db.flush()
 
         try:
-            await deduplicate_project(db, project)
+            await deduplicate_project(db, project, user_id)
         except Exception:
             logger.exception("Deduplication failed for project %s", proj.name)
             project.variant_group_id = uuid.uuid4()
@@ -253,6 +259,7 @@ async def parse_and_store_cv(
             reasons.append(f"Low dates confidence: {act.dates_confidence}")
 
         activity = Activity(
+            user_id=user_id,
             upload_source_id=upload.id,
             organization=act.company, role_title=act.role_title, location=act.location,
             date_start=_parse_date(act.date_start), date_end=_parse_date(act.date_end),
@@ -266,7 +273,7 @@ async def parse_and_store_cv(
         await db.flush()
 
         try:
-            dedup_result = await deduplicate_activity(db, activity)
+            dedup_result = await deduplicate_activity(db, activity, user_id)
             if dedup_result.action in ("near_duplicate", "variant"):
                 duplicate_groups.setdefault(str(dedup_result.variant_group_id), [])
                 duplicate_groups[str(dedup_result.variant_group_id)].append(
@@ -303,13 +310,20 @@ async def parse_and_store_cv(
         category = skill.category
         if category and category not in VALID_SKILL_CATEGORIES:
             category = "other"
-        db.add(Skill(name=skill.name, canonical_name=skill.name, category=category, proficiency=skill.proficiency))
+        db.add(Skill(
+            user_id=user_id,
+            name=skill.name,
+            canonical_name=skill.name,
+            category=category,
+            proficiency=skill.proficiency,
+        ))
         cleanly_parsed_count += 1
 
     # Store unclassified blocks
     unclassified_out: list[UnclassifiedBlockOut] = []
     for block in parsed.unclassified_blocks:
         ub = UnclassifiedBlock(
+            user_id=user_id,
             upload_source_id=upload.id,
             raw_text=block.raw_text,
             gpt_category_guess=block.category_guess,
@@ -336,7 +350,7 @@ async def parse_and_store_cv(
     )
 
 
-async def re_embed_all(db: AsyncSession) -> dict:
+async def re_embed_all(db: AsyncSession, user_id: uuid.UUID) -> dict:
     """Re-generate embeddings for all records with NULL embeddings."""
     counts = {}
 
@@ -345,7 +359,12 @@ async def re_embed_all(db: AsyncSession) -> dict:
         (Project, "name", "projects"),
         (Activity, "organization", "activities"),
     ]:
-        result = await db.execute(select(model).where(model.embedding.is_(None)))
+        result = await db.execute(
+            select(model).where(
+                model.embedding.is_(None),
+                model.user_id == user_id,
+            )
+        )
         items = result.scalars().all()
         count = 0
         for item in items:

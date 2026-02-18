@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.auth import get_current_user
 from backend.models.database import get_db
 from backend.models.tables import Application
 from backend.schemas.pydantic import ApplicationCreate, ApplicationOut
@@ -24,9 +25,11 @@ MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
 async def create_application(
     body: ApplicationCreate,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Create a new job application with raw JD."""
     app = Application(
+        user_id=user_id,
         company_name=body.company_name,
         role_title=body.role_title,
         jd_raw=body.jd_raw,
@@ -74,10 +77,14 @@ async def extract_screenshot_text(file: UploadFile):
 async def get_application(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Get a single application by ID."""
     result = await db.execute(
-        select(Application).where(Application.id == application_id)
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
     )
     app = result.scalar_one_or_none()
     if not app:

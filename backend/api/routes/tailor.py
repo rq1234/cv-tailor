@@ -13,6 +13,7 @@ from sse_starlette.sse import EventSourceResponse
 from pgvector.sqlalchemy import Vector
 
 from backend.agents.graph import run_pipeline
+from backend.api.auth import get_current_user
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, TailoringRule, WorkExperience
 from backend.schemas.pydantic import TailorRunRequest
@@ -25,6 +26,7 @@ router = APIRouter(prefix="/api/tailor", tags=["tailor"])
 async def run_tailoring(
     body: TailorRunRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Trigger the full agent pipeline for an application.
 
@@ -32,7 +34,10 @@ async def run_tailoring(
     """
     # Validate application exists
     result = await db.execute(
-        select(Application).where(Application.id == body.application_id)
+        select(Application).where(
+            Application.id == body.application_id,
+            Application.user_id == user_id,
+        )
     )
     app = result.scalar_one_or_none()
     if not app:
@@ -56,7 +61,7 @@ async def run_tailoring(
 
         # Run pipeline in background task
         pipeline_task = asyncio.create_task(
-            run_pipeline(str(body.application_id), app.jd_raw, db, on_step)
+            run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step)
         )
 
         try:
@@ -110,10 +115,14 @@ async def run_tailoring(
 async def debug_selection(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Inspect similarity scores used for experience selection."""
     app_result = await db.execute(
-        select(Application).where(Application.id == application_id)
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
     )
     app = app_result.scalar_one_or_none()
     if not app:
@@ -159,7 +168,12 @@ async def debug_selection(
             domain_keywords.add(kw)
 
     total_result = await db.execute(
-        select(func.count()).select_from(WorkExperience).where(WorkExperience.embedding.is_not(None))
+        select(func.count())
+        .select_from(WorkExperience)
+        .where(
+            WorkExperience.embedding.is_not(None),
+            WorkExperience.user_id == user_id,
+        )
     )
     total_with_embeddings = total_result.scalar_one()
 
@@ -167,12 +181,13 @@ async def debug_selection(
         SELECT id, company, role_title, variant_group_id, domain_tags,
                1 - (embedding <=> :embedding) as similarity
         FROM work_experiences
-        WHERE embedding IS NOT NULL
+                WHERE embedding IS NOT NULL
+                    AND user_id = :user_id
         ORDER BY similarity DESC
         LIMIT 30
     """).bindparams(bindparam("embedding", type_=Vector))
 
-    result = await db.execute(stmt, {"embedding": jd_embedding})
+    result = await db.execute(stmt, {"embedding": jd_embedding, "user_id": user_id})
     rows = result.fetchall()
 
     # Apply domain boost and selection logic
@@ -226,11 +241,15 @@ async def debug_selection(
 async def get_tailor_result(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Get the tailoring result for an application (non-streaming)."""
     result = await db.execute(
         select(CvVersion)
-        .where(CvVersion.application_id == application_id)
+        .where(
+            CvVersion.application_id == application_id,
+            CvVersion.user_id == user_id,
+        )
         .order_by(CvVersion.created_at.desc())
         .limit(1)
     )
@@ -240,7 +259,10 @@ async def get_tailor_result(
 
     # Get ATS result from the application
     app_result = await db.execute(
-        select(Application).where(Application.id == application_id)
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
     )
     app = app_result.scalar_one()
 
@@ -255,7 +277,10 @@ async def get_tailor_result(
     if exp_ids:
         exp_uuids = [uuid.UUID(eid) for eid in exp_ids]
         exp_result = await db.execute(
-            select(WorkExperience).where(WorkExperience.id.in_(exp_uuids))
+            select(WorkExperience).where(
+                WorkExperience.id.in_(exp_uuids),
+                WorkExperience.user_id == user_id,
+            )
         )
         for exp in exp_result.scalars():
             experience_meta[str(exp.id)] = {
@@ -271,7 +296,10 @@ async def get_tailor_result(
     if proj_ids:
         proj_uuids = [uuid.UUID(pid) for pid in proj_ids]
         proj_result = await db.execute(
-            select(Project).where(Project.id.in_(proj_uuids))
+            select(Project).where(
+                Project.id.in_(proj_uuids),
+                Project.user_id == user_id,
+            )
         )
         for proj in proj_result.scalars():
             project_meta[str(proj.id)] = {
@@ -286,7 +314,10 @@ async def get_tailor_result(
     if act_ids:
         act_uuids = [uuid.UUID(aid) for aid in act_ids]
         act_result = await db.execute(
-            select(Activity).where(Activity.id.in_(act_uuids))
+            select(Activity).where(
+                Activity.id.in_(act_uuids),
+                Activity.user_id == user_id,
+            )
         )
         for act in act_result.scalars():
             activity_meta[str(act.id)] = {
@@ -302,7 +333,10 @@ async def get_tailor_result(
     edu_ids = cv_version.selected_education or []
     if edu_ids:
         edu_result = await db.execute(
-            select(Education).where(Education.id.in_(edu_ids))
+            select(Education).where(
+                Education.id.in_(edu_ids),
+                Education.user_id == user_id,
+            )
         )
         for edu in edu_result.scalars():
             achievements = []
@@ -332,7 +366,10 @@ async def get_tailor_result(
     skill_ids = cv_version.selected_skills or []
     if skill_ids:
         skill_result = await db.execute(
-            select(Skill).where(Skill.id.in_(skill_ids))
+            select(Skill).where(
+                Skill.id.in_(skill_ids),
+                Skill.user_id == user_id,
+            )
         )
         skills_by_id = {s.id: s for s in skill_result.scalars()}
         for sid in skill_ids:
@@ -369,10 +406,14 @@ async def accept_changes(
     version_id: uuid.UUID,
     body: dict,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Save user's accepted/rejected diffs."""
     result = await db.execute(
-        select(CvVersion).where(CvVersion.id == version_id)
+        select(CvVersion).where(
+            CvVersion.id == version_id,
+            CvVersion.user_id == user_id,
+        )
     )
     cv_version = result.scalar_one_or_none()
     if not cv_version:
@@ -463,6 +504,7 @@ async def accept_changes(
 async def re_tailor_application(
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Re-run tailoring for an existing application without changing selection.
     
@@ -475,7 +517,10 @@ async def re_tailor_application(
     
     # Get application
     app_result = await db.execute(
-        select(Application).where(Application.id == application_id)
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
     )
     app = app_result.scalar_one_or_none()
     if not app:
@@ -487,7 +532,10 @@ async def re_tailor_application(
     # Get latest CV version
     cv_result = await db.execute(
         select(CvVersion)
-        .where(CvVersion.application_id == application_id)
+        .where(
+            CvVersion.application_id == application_id,
+            CvVersion.user_id == user_id,
+        )
         .order_by(CvVersion.created_at.desc())
         .limit(1)
     )
@@ -497,7 +545,10 @@ async def re_tailor_application(
     
     # Fetch rules
     rules_result = await db.execute(
-        select(TailoringRule).where(TailoringRule.is_active.is_(True))
+        select(TailoringRule).where(
+            TailoringRule.is_active.is_(True),
+            TailoringRule.user_id == user_id,
+        )
     )
     rules = rules_result.scalars().all()
     rules_text = ""
@@ -510,7 +561,10 @@ async def re_tailor_application(
     exp_ids = cv_version.selected_experiences or []
     if exp_ids:
         exp_result = await db.execute(
-            select(WorkExperience).where(WorkExperience.id.in_(exp_ids))
+            select(WorkExperience).where(
+                WorkExperience.id.in_(exp_ids),
+                WorkExperience.user_id == user_id,
+            )
         )
         experiences = exp_result.scalars().all()
         exp_dicts = [
@@ -538,7 +592,10 @@ async def re_tailor_application(
     proj_ids = cv_version.selected_projects or []
     if proj_ids:
         proj_result = await db.execute(
-            select(Project).where(Project.id.in_(proj_ids))
+            select(Project).where(
+                Project.id.in_(proj_ids),
+                Project.user_id == user_id,
+            )
         )
         projects = proj_result.scalars().all()
         proj_dicts = [
@@ -558,7 +615,10 @@ async def re_tailor_application(
     act_ids = cv_version.selected_activities or []
     if act_ids:
         act_result = await db.execute(
-            select(Activity).where(Activity.id.in_(act_ids))
+            select(Activity).where(
+                Activity.id.in_(act_ids),
+                Activity.user_id == user_id,
+            )
         )
         activities = act_result.scalars().all()
         act_dicts = [
