@@ -28,7 +28,10 @@ class Settings(BaseSettings):
     database_url: str = Field(default="", alias="DATABASE_URL")
 
     # ── Server ──
-    cors_origins: list[str] = ["http://localhost:3000"]
+    cors_origins: list[str] = Field(
+        default=["http://localhost:3000"],
+        alias="CORS_ORIGINS",
+    )
 
     # ── OpenAI models ──
     model_name: str = "gpt-4o"

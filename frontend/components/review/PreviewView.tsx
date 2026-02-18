@@ -25,8 +25,8 @@ function EducationPreview({
   setManualEdit = () => {},
 }: {
   result: TailorResult;
-  manualEdits: Record<string, string>;
-  setManualEdit: (key: string, value: string) => void;
+  manualEdits?: Record<string, string>;
+  setManualEdit?: (key: string, value: string) => void;
 }) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
 
@@ -104,8 +104,8 @@ function SkillsPreview({
   setManualEdit = () => {},
 }: {
   result: TailorResult;
-  manualEdits: Record<string, string>;
-  setManualEdit: (key: string, value: string) => void;
+  manualEdits?: Record<string, string>;
+  setManualEdit?: (key: string, value: string) => void;
 }) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
 
@@ -243,7 +243,7 @@ export default function PreviewView({
                             onClick={() => {
                               if (isRejected) {
                                 setBulletDecision(id, idx, "accept");
-                              } else if (!isEdited) {
+                              } else if (bulletState?.decision !== "edit") {
                                 setBulletDecision(id, idx, "reject");
                               }
                             }}

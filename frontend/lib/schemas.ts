@@ -151,7 +151,7 @@ export const applicationSchema = z.object({
   company_name: z.string(),
   role_title: z.string().nullable(),
   jd_raw: z.string(),
-  jd_parsed: z.record(z.any()).nullable(),
+  jd_parsed: z.record(z.string(), z.any()).nullable(),
   jd_source: z.string().nullable(),
   status: z.string(),
   created_at: z.string(),

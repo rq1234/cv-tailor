@@ -51,6 +51,7 @@ export interface EducationData {
   date_start: string | null;
   date_end: string | null;
   achievements: string[];
+  modules: string[];
 }
 
 export interface TailorResult {
@@ -143,8 +144,8 @@ export function sortByDateDesc(
   return entries.sort(([idA], [idB]) => {
     const metaA = result.experience_meta?.[idA] || result.project_meta?.[idA] || result.activity_meta?.[idA];
     const metaB = result.experience_meta?.[idB] || result.project_meta?.[idB] || result.activity_meta?.[idB];
-    const dateA = (metaA as Record<string, unknown>)?.date_start as string | null;
-    const dateB = (metaB as Record<string, unknown>)?.date_start as string | null;
+    const dateA = (metaA as unknown as Record<string, unknown>)?.date_start as string | null;
+    const dateB = (metaB as unknown as Record<string, unknown>)?.date_start as string | null;
     if (!dateA && !dateB) return 0;
     if (!dateA) return 1;
     if (!dateB) return -1;
