@@ -27,14 +27,13 @@ export default function LoginPage() {
     }
 
     if (mode === "signin") {
-      await signIn(email, password);
+      const success = await signIn(email, password);
+      if (success) {
+        router.replace("/library");
+      }
     } else {
+      // Sign up - don't redirect, let confirmation screen show
       await signUp(email, password);
-    }
-
-    const authError = error || localError;
-    if (!authError) {
-      router.replace("/library");
     }
   };
 
