@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, HTTPException, status
+from fastapi import APIRouter, HTTPException, Request, status
 from pydantic import BaseModel, EmailStr, Field
 from supabase import create_client
 from slowapi import Limiter
@@ -30,7 +30,7 @@ class PasswordResetConfirm(BaseModel):
 
 @router.post("/password-reset")
 @limiter.limit("5/hour")
-async def request_password_reset(req: PasswordResetRequest) -> dict:
+async def request_password_reset(request: Request, req: PasswordResetRequest) -> dict:
     """Send password reset email to user.
 
     Rate limited to 5 requests per hour to prevent abuse.
@@ -54,6 +54,7 @@ async def request_password_reset(req: PasswordResetRequest) -> dict:
 @router.post("/password-reset/confirm")
 @limiter.limit("10/hour")
 async def confirm_password_reset(
+    request: Request,
     token: str,
     new_password: str = Field(min_length=8, max_length=128),
 ) -> dict:
