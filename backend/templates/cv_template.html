@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<style>
+  @page {
+    size: letter portrait;
+    margin: 0.5in;
+  }
+  * { margin: 0; padding: 0; }
+  body {
+    font-family: "Times New Roman", Georgia, serif;
+    font-size: 10pt;
+    line-height: 1.25;
+    color: #000;
+  }
+
+  /* ── Header ── */
+  .header { text-align: center; margin-bottom: 4pt; }
+  .header h1 {
+    font-size: 22pt; font-weight: 700; text-transform: uppercase;
+    margin-bottom: 2pt; letter-spacing: 1pt;
+  }
+  .header .contact { font-size: 9pt; }
+  .header .contact a { color: #000; text-decoration: underline; }
+
+  /* ── Section titles ── */
+  .section { margin-top: 6pt; }
+  .section-title {
+    font-size: 11pt; font-weight: 700; text-transform: uppercase;
+    border-bottom: 1pt solid #000; padding-bottom: 1pt; margin-bottom: 4pt;
+    letter-spacing: 0.5pt;
+  }
+
+  /* ── Two-row entry table (Jake Ryan style) ── */
+  table.entry-row {
+    width: 100%;
+    border-collapse: collapse;
+    margin-bottom: 0;
+  }
+  table.entry-row td {
+    border: none;
+    padding: 0 0 1pt 0;
+    vertical-align: top;
+    font-size: 10pt;
+  }
+  table.entry-row td.right {
+    text-align: right;
+    white-space: nowrap;
+    width: 140pt;
+  }
+  .bold { font-weight: 700; }
+  .italic { font-style: italic; }
+  .small-italic { font-style: italic; font-size: 9.5pt; }
+
+  .entry { margin-bottom: 2pt; }
+
+  /* ── Bullet lists ── */
+  ul.bullets { margin: 1pt 0 2pt 18pt; padding: 0; list-style-type: disc; }
+  ul.bullets li { margin-bottom: 0.5pt; font-size: 10pt; line-height: 1.25; }
+
+  /* ── Skills (inline) ── */
+  .skill-line { margin-bottom: 1pt; font-size: 10pt; line-height: 1.3; }
+</style>
+</head>
+<body>
+  <!-- Header -->
+  <div class="header">
+    <h1>{{ profile.name or "Your Name" }}</h1>
+    <div class="contact">
+      {% if profile.phone %}{{ profile.phone }}{% endif %}
+      {% if profile.phone and profile.email %} | {% endif %}
+      {% if profile.email %}<a href="mailto:{{ profile.email }}">{{ profile.email }}</a>{% endif %}
+      {% if (profile.phone or profile.email) and profile.linkedin_url %} | {% endif %}
+      {% if profile.linkedin_url %}<a href="{{ profile.linkedin_url }}">{{ profile.linkedin_url | replace("https://", "") | replace("http://", "") }}</a>{% endif %}
+      {% if profile.portfolio_url %} | <a href="{{ profile.portfolio_url }}">{{ profile.portfolio_url | replace("https://", "") | replace("http://", "") }}</a>{% endif %}
+    </div>
+  </div>
+
+  <!-- Education -->
+  {% if education %}
+  <div class="section">
+    <div class="section-title">Education</div>
+    {% for edu in education %}
+    <div class="entry">
+      <table class="entry-row">
+        <tr>
+          <td><span class="bold">{{ edu.institution or "Institution" }}</span></td>
+          <td class="right">{{ edu.location or "" }}</td>
+        </tr>
+        <tr>
+          <td><span class="small-italic">{{ edu.degree or "Degree" }}</span></td>
+          <td class="right"><span class="small-italic">{{ edu.date_start or "" }}{% if edu.date_start and edu.date_end %} &ndash; {% endif %}{{ edu.date_end or "" }}</span></td>
+        </tr>
+      </table>
+      {% if edu.grade or edu.achievements or edu.modules %}
+      <ul class="bullets">
+        {% if edu.grade %}<li>{{ edu.grade }}</li>{% endif %}
+        {% if edu.achievements %}
+          {% for a in edu.achievements %}<li>{{ a }}</li>{% endfor %}
+        {% endif %}
+        {% if edu.modules and edu.modules|length > 0 %}
+          <li><b>Coursework:</b> {{ edu.modules | join(", ") }}</li>
+        {% endif %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Experience -->
+  {% if experiences %}
+  <div class="section">
+    <div class="section-title">Experience</div>
+    {% for exp in experiences %}
+    <div class="entry">
+      <table class="entry-row">
+        <tr>
+          <td><span class="bold">{{ exp.role_title or "Role" }}</span></td>
+          <td class="right">{{ exp.date_start or "" }}{% if exp.date_start and exp.date_end %} &ndash; {% endif %}{{ exp.date_end or "Present" }}</td>
+        </tr>
+        <tr>
+          <td><span class="small-italic">{{ exp.company or "Company" }}</span></td>
+          <td class="right"><span class="small-italic">{{ exp.location or "" }}</span></td>
+        </tr>
+      </table>
+      {% if exp.bullets %}
+      <ul class="bullets">
+        {% for bullet in exp.bullets %}<li>{{ bullet }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Projects -->
+  {% if projects %}
+  <div class="section">
+    <div class="section-title">Projects</div>
+    {% for proj in projects %}
+    <div class="entry">
+      <table class="entry-row">
+        <tr>
+          <td>
+            <span class="bold">{{ proj.name or "Project" }}</span>
+            {% if proj.skill_tags %} | <span class="italic">{{ proj.skill_tags | join(", ") }}</span>{% endif %}
+          </td>
+          <td class="right">{{ proj.date_start or "" }}{% if proj.date_start and proj.date_end %} &ndash; {% endif %}{{ proj.date_end or "" }}</td>
+        </tr>
+      </table>
+      {% if proj.bullets %}
+      <ul class="bullets">
+        {% for bullet in proj.bullets %}<li>{{ bullet }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Activities -->
+  {% if activities %}
+  <div class="section">
+    <div class="section-title">Leadership &amp; Activities</div>
+    {% for act in activities %}
+    <div class="entry">
+      <table class="entry-row">
+        <tr>
+          <td><span class="bold">{{ act.role_title or "Role" }}</span></td>
+          <td class="right">{{ act.date_start or "" }}{% if act.date_start and act.date_end %} &ndash; {% endif %}{{ act.date_end or "" }}</td>
+        </tr>
+        <tr>
+          <td><span class="small-italic">{{ act.organization or "Organization" }}</span></td>
+          <td class="right"><span class="small-italic">{{ act.location or "" }}</span></td>
+        </tr>
+      </table>
+      {% if act.bullets %}
+      <ul class="bullets">
+        {% for bullet in act.bullets %}<li>{{ bullet }}</li>{% endfor %}
+      </ul>
+      {% endif %}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+
+  <!-- Skills -->
+  {% if skills_by_category %}
+  <div class="section">
+    <div class="section-title">Technical Skills</div>
+    {% for category, skill_list in skills_by_category.items() %}
+    <div class="skill-line">
+      <b>{{ category }}:</b> {{ skill_list | join(", ") }}
+    </div>
+    {% endfor %}
+  </div>
+  {% endif %}
+</body>
+</html>

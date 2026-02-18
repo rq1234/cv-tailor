@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(uv init:*)",
+      "Bash(uv add:*)",
+      "Bash(node --version:*)",
+      "Bash(where:*)",
+      "Bash(npm install:*)",
+      "Bash(pnpm add:*)",
+      "Bash(pnpm dlx:*)",
+      "Bash(UV_LINK_MODE=copy uv run:*)",
+      "WebFetch(domain:rwdvrkuvapndufsbdeix.supabase.co)",
+      "Bash(ipconfig:*)",
+      "Bash(ping:*)",
+      "Bash(UV_LINK_MODE=copy uv pip install:*)",
+      "Bash(UV_LINK_MODE=copy uv sync:*)",
+      "Bash(python:*)",
+      "Bash(PYTHONPATH=. python:*)",
+      "Bash(backend/.venv/Scripts/python:*)",
+      "Bash(UV_LINK_MODE=copy backend/.venv/Scripts/python -c \"\nimport asyncio, sys, os\nsys.path.insert\\(0, ''.''\\)\nos.environ[''DATABASE_URL''] = ''postgresql+asyncpg://postgres.rwdvrkuvapndufsbdeix:BuddhaGenius12345!@aws-1-eu-west-1.pooler.supabase.com:6543/postgres''\nfrom sqlalchemy import text\nfrom backend.models.database import async_session\n\nasync def fix\\(\\):\n    async with async_session\\(\\) as db:\n        await db.execute\\(text\\(''ALTER TABLE skills DROP CONSTRAINT IF EXISTS ck_skills_category''\\)\\)\n        await db.execute\\(text\\(\"\"ALTER TABLE skills ADD CONSTRAINT ck_skills_category CHECK \\(category IN \\(''technical'', ''language'', ''tool'', ''soft'', ''other'', ''certification'', ''framework''\\)\\)\"\"\\)\\)\n        await db.commit\\(\\)\n        print\\(''Constraint updated''\\)\n\nasyncio.run\\(fix\\(\\)\\)\n\")",
+      "Bash(find:*)",
+      "Read(//c/Users/rongq/OneDrive/**)",
+      "Bash(ls:*)",
+      "WebFetch(domain:raw.githubusercontent.com)",
+      "Bash(npx next lint)",
+      "Bash(uv sync:*)"
+    ]
+  }
+}
