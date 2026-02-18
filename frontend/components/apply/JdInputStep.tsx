@@ -115,6 +115,7 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext }: JdInp
               </div>
             ) : screenshotPreview ? (
               <div className="space-y-3">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img src={screenshotPreview} alt="Screenshot preview" className="mx-auto max-h-48 rounded-md object-contain" />
                 <p className="text-sm text-green-700 font-medium">Text extracted successfully</p>
                 <p className="text-xs text-muted-foreground">Click or drop a new image to replace</p>

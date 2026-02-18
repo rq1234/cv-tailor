@@ -23,13 +23,11 @@ export default function ReviewPage() {
   const [result, setResult] = useState<TailorResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [atsWarnings, setAtsWarnings] = useState<AtsWarning[]>([]);
-  const [atsScore, setAtsScore] = useState<number | null>(null);
   const [showAtsWarnings, setShowAtsWarnings] = useState(false);
   const [saving, setSaving] = useState(false);
   const [retailoring, setRetailoring] = useState(false);
   const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
-  const [exportDropdown, setExportDropdown] = useState(false);
+  const [_exportDropdown, setExportDropdown] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, Record<number, BulletState>>>({});
   const [manualEdits, setManualEdits] = useState<Record<string, string>>({});
   const [recoveredFromStorage, setRecoveredFromStorage] = useState(false);
@@ -132,7 +130,7 @@ export default function ReviewPage() {
     setManualEdits({});
   };
 
-  const resetAll = () => {
+  const _resetAll = () => {
     resetAllDecisions();
     resetAllEdits();
   };
@@ -255,7 +253,7 @@ export default function ReviewPage() {
     }
   };
 
-  const handleSaveAndExport = async () => {
+  const _handleSaveAndExport = async () => {
     if (!result) return;
     setSaving(true);
 
@@ -286,7 +284,7 @@ export default function ReviewPage() {
 
 
 
-  const handleDownloadLaTeX = async () => {
+  const _handleDownloadLaTeX = async () => {
     if (!result) return;
     setSaving(true);
 
