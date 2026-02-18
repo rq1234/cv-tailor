@@ -28,6 +28,7 @@ async def _find_similar(
     table_name: str,
     embedding: list[float],
     threshold: float,
+    user_id: uuid.UUID,
 ) -> list[tuple[uuid.UUID, uuid.UUID | None, float]]:
     """Find rows in *table_name* with cosine similarity above threshold.
 
@@ -38,13 +39,14 @@ async def _find_similar(
                1 - (embedding <=> :embedding) as similarity
         FROM {table_name}
         WHERE embedding IS NOT NULL
+                    AND user_id = :user_id
           AND 1 - (embedding <=> :embedding) > :threshold
         ORDER BY similarity DESC
         LIMIT 5
     """).bindparams(bindparam("embedding", type_=Vector))
     result = await db.execute(
         stmt,
-        {"embedding": embedding, "threshold": threshold},
+                {"embedding": embedding, "threshold": threshold, "user_id": user_id},
     )
     return [(row[0], row[1], row[2]) for row in result.fetchall()]
 
@@ -82,6 +84,7 @@ def _classify(
 async def deduplicate_experience(
     db: AsyncSession,
     experience: WorkExperience,
+    user_id: uuid.UUID,
 ) -> DeduplicationResult:
     """Check if a work experience is a duplicate/variant of an existing one."""
     settings = get_settings()
@@ -91,13 +94,20 @@ async def deduplicate_experience(
     embedding = await embed_text(embed_input)
     experience.embedding = embedding
 
-    similar = await _find_similar(db, "work_experiences", embedding, settings.variant_threshold)
+    similar = await _find_similar(
+        db,
+        "work_experiences",
+        embedding,
+        settings.variant_threshold,
+        user_id,
+    )
     return _classify(similar, experience, settings.near_duplicate_threshold)
 
 
 async def deduplicate_project(
     db: AsyncSession,
     project: Project,
+    user_id: uuid.UUID,
 ) -> DeduplicationResult:
     """Check if a project is a duplicate/variant of an existing one."""
     settings = get_settings()
@@ -107,13 +117,20 @@ async def deduplicate_project(
     embedding = await embed_text(embed_input)
     project.embedding = embedding
 
-    similar = await _find_similar(db, "projects", embedding, settings.variant_threshold)
+    similar = await _find_similar(
+        db,
+        "projects",
+        embedding,
+        settings.variant_threshold,
+        user_id,
+    )
     return _classify(similar, project, settings.near_duplicate_threshold)
 
 
 async def deduplicate_activity(
     db: AsyncSession,
     activity: Activity,
+    user_id: uuid.UUID,
 ) -> DeduplicationResult:
     """Check if an activity is a duplicate/variant of an existing one."""
     settings = get_settings()
@@ -123,5 +140,11 @@ async def deduplicate_activity(
     embedding = await embed_text(embed_input)
     activity.embedding = embedding
 
-    similar = await _find_similar(db, "activities", embedding, settings.variant_threshold)
+    similar = await _find_similar(
+        db,
+        "activities",
+        embedding,
+        settings.variant_threshold,
+        user_id,
+    )
     return _classify(similar, activity, settings.near_duplicate_threshold)

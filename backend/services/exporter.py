@@ -33,11 +33,15 @@ def _format_date(d: date | str | None) -> str:
 async def _build_cv_context(
     db: AsyncSession,
     cv_version: CvVersion,
+    user_id: uuid.UUID,
 ) -> dict:
     """Build the template context dict from a CvVersion and its referenced records."""
     # Profile
     profile_result = await db.execute(
-        select(CvProfile).order_by(CvProfile.updated_at.desc()).limit(1)
+        select(CvProfile)
+        .where(CvProfile.user_id == user_id)
+        .order_by(CvProfile.updated_at.desc())
+        .limit(1)
     )
     profile_row = profile_result.scalar_one_or_none()
     profile = {}
@@ -58,7 +62,10 @@ async def _build_cv_context(
     if exp_ids:
         result = await db.execute(
             select(WorkExperience)
-            .where(WorkExperience.id.in_(exp_ids))
+            .where(
+                WorkExperience.id.in_(exp_ids),
+                WorkExperience.user_id == user_id,
+            )
             .order_by(WorkExperience.date_start.desc().nullslast())
         )
         for exp in result.scalars().all():
@@ -98,7 +105,10 @@ async def _build_cv_context(
     accepted = cv_version.accepted_changes or {}
     if edu_ids:
         result = await db.execute(
-            select(Education).where(Education.id.in_(edu_ids))
+            select(Education).where(
+                Education.id.in_(edu_ids),
+                Education.user_id == user_id,
+            )
         )
         for edu in result.scalars().all():
             edu_id_str = str(edu.id)
@@ -164,7 +174,7 @@ async def _build_cv_context(
     if proj_ids:
         result = await db.execute(
             select(Project)
-            .where(Project.id.in_(proj_ids))
+            .where(Project.id.in_(proj_ids), Project.user_id == user_id)
             .order_by(Project.date_start.desc().nullslast())
         )
         for proj in result.scalars().all():
@@ -211,7 +221,7 @@ async def _build_cv_context(
     if act_ids:
         result = await db.execute(
             select(Activity)
-            .where(Activity.id.in_(act_ids))
+            .where(Activity.id.in_(act_ids), Activity.user_id == user_id)
             .order_by(Activity.date_start.desc().nullslast())
         )
         for act in result.scalars().all():
@@ -406,9 +416,9 @@ def _soft_trim_bullet(text: str, target_len: int = 95, max_len: int = 110) -> st
     return trimmed
 
 
-async def generate_latex(db: AsyncSession, cv_version: CvVersion) -> str:
+async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.UUID) -> str:
     """Generate LaTeX source (not compiled PDF)."""
-    context = await _build_cv_context(db, cv_version)
+    context = await _build_cv_context(db, cv_version, user_id)
     profile = context["profile"]
 
     # Start LaTeX document - Jake Gutierrez resume template

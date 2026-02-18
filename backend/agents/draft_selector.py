@@ -33,6 +33,7 @@ class SelectionResult(BaseModel):
 async def select_experiences(
     db: AsyncSession,
     jd_parsed: dict,
+    user_id: uuid.UUID,
 ) -> SelectionResult:
     """Select the most relevant experiences from the pool based on parsed JD.
 
@@ -94,12 +95,13 @@ async def select_experiences(
                1 - (embedding <=> :embedding) as similarity
         FROM work_experiences
         WHERE embedding IS NOT NULL
+          AND user_id = :user_id
         ORDER BY similarity DESC
         LIMIT 30
     """).bindparams(bindparam("embedding", type_=Vector))
     result = await db.execute(
         experience_stmt,
-        {"embedding": jd_embedding},
+        {"embedding": jd_embedding, "user_id": user_id},
     )
     rows = result.fetchall()
 
@@ -193,7 +195,9 @@ async def select_experiences(
 
     # Select education: prefer university-level, most recent entry
     edu_result = await db.execute(
-        select(Education).order_by(
+        select(Education)
+        .where(Education.user_id == user_id)
+        .order_by(
             Education.date_end.desc().nullslast(),
             Education.date_start.desc().nullslast(),
         )
@@ -246,12 +250,13 @@ async def select_experiences(
     project_stmt = text("""
         SELECT id, name, variant_group_id FROM projects
         WHERE embedding IS NOT NULL
+          AND user_id = :user_id
         ORDER BY 1 - (embedding <=> :embedding) DESC
         LIMIT :lim
     """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
     proj_result = await db.execute(
         project_stmt,
-        {"embedding": jd_embedding, "lim": project_limit * 3},
+        {"embedding": jd_embedding, "lim": project_limit * 3, "user_id": user_id},
     )
     # Deduplicate projects by name and variant_group_id
     selected_projects: list[str] = []
@@ -277,7 +282,11 @@ async def select_experiences(
 
     # If no projects with embeddings, get all up to limit
     if not selected_projects:
-        proj_all = await db.execute(select(Project.id, Project.name).limit(project_limit * 3))
+        proj_all = await db.execute(
+            select(Project.id, Project.name)
+            .where(Project.user_id == user_id)
+            .limit(project_limit * 3)
+        )
         for row in proj_all.fetchall():
             name_lower = (row[1] or "").strip().lower()
             if name_lower and name_lower in seen_proj_names:
@@ -292,12 +301,13 @@ async def select_experiences(
     activity_stmt = text("""
         SELECT id, organization, role_title, variant_group_id FROM activities
         WHERE embedding IS NOT NULL
+          AND user_id = :user_id
         ORDER BY 1 - (embedding <=> :embedding) DESC
         LIMIT :lim
     """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
     act_result = await db.execute(
         activity_stmt,
-        {"embedding": jd_embedding, "lim": activity_limit * 3},
+        {"embedding": jd_embedding, "lim": activity_limit * 3, "user_id": user_id},
     )
     # Deduplicate activities by organization+role and variant_group_id
     selected_activities: list[str] = []
@@ -321,7 +331,9 @@ async def select_experiences(
 
     # If no activities with embeddings, get all up to limit
     if not selected_activities:
-        act_all = await db.execute(select(Activity.id).limit(activity_limit))
+        act_all = await db.execute(
+            select(Activity.id).where(Activity.user_id == user_id).limit(activity_limit)
+        )
         selected_activities = [str(row[0]) for row in act_all.fetchall()]
 
     # ---- 1-page line budget ----
@@ -354,7 +366,10 @@ async def select_experiences(
         exp_uuids = [uuid.UUID(e.id) for e in selected]
         bc_result = await db.execute(
             select(WorkExperience.id, WorkExperience.bullets)
-            .where(WorkExperience.id.in_(exp_uuids))
+            .where(
+                WorkExperience.id.in_(exp_uuids),
+                WorkExperience.user_id == user_id,
+            )
         )
         for row in bc_result:
             bullets = row[1] or []
@@ -369,7 +384,7 @@ async def select_experiences(
         proj_uuids = [uuid.UUID(p) for p in selected_projects]
         pbc_result = await db.execute(
             select(Project.id, Project.bullets)
-            .where(Project.id.in_(proj_uuids))
+            .where(Project.id.in_(proj_uuids), Project.user_id == user_id)
         )
         for row in pbc_result:
             bullets = row[1] or []
@@ -384,7 +399,7 @@ async def select_experiences(
         act_uuids = [uuid.UUID(a) for a in selected_activities]
         abc_result = await db.execute(
             select(Activity.id, Activity.bullets)
-            .where(Activity.id.in_(act_uuids))
+            .where(Activity.id.in_(act_uuids), Activity.user_id == user_id)
         )
         for row in abc_result:
             bullets = row[1] or []
@@ -435,7 +450,10 @@ async def select_experiences(
 
     # Select skills: JD-relevant first, then fill with remaining up to a cap
     skill_result = await db.execute(
-        select(Skill.id, Skill.name, Skill.category).where(Skill.is_duplicate_of.is_(None))
+        select(Skill.id, Skill.name, Skill.category).where(
+            Skill.is_duplicate_of.is_(None),
+            Skill.user_id == user_id,
+        )
     )
     skill_rows = skill_result.fetchall()
 

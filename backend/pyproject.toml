@@ -21,6 +21,7 @@ dependencies = [
     "python-multipart>=0.0.22",
     "sqlalchemy[asyncio]>=2.0.46",
     "sse-starlette>=3.2.0",
+    "PyJWT[crypto]>=2.8.0",
     "uvicorn[standard]>=0.40.0",
 ]
 

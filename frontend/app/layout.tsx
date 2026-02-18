@@ -2,6 +2,8 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import Link from "next/link";
 import "./globals.css";
+import AuthProvider from "@/components/AuthProvider";
+import UserMenu from "@/components/UserMenu";
 
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
@@ -36,25 +38,28 @@ export default function RootLayout({
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased min-h-screen bg-background`}
       >
-        <nav className="border-b bg-white">
-          <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
-            <Link href="/library" className="text-lg font-semibold">
-              CV Tailor
-            </Link>
-            <div className="flex gap-4">
-              {navItems.map((item) => (
-                <Link
-                  key={item.href}
-                  href={item.href}
-                  className="text-sm text-muted-foreground hover:text-foreground transition-colors"
-                >
-                  {item.label}
-                </Link>
-              ))}
+        <AuthProvider>
+          <nav className="border-b bg-white">
+            <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
+              <Link href="/library" className="text-lg font-semibold">
+                CV Tailor
+              </Link>
+              <div className="flex gap-4">
+                {navItems.map((item) => (
+                  <Link
+                    key={item.href}
+                    href={item.href}
+                    className="text-sm text-muted-foreground hover:text-foreground transition-colors"
+                  >
+                    {item.label}
+                  </Link>
+                ))}
+              </div>
+              <UserMenu />
             </div>
-          </div>
-        </nav>
-        <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+          </nav>
+          <main className="mx-auto max-w-7xl px-4 py-6">{children}</main>
+        </AuthProvider>
       </body>
     </html>
   );

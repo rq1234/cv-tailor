@@ -21,6 +21,7 @@ class CvUpload(Base):
     __tablename__ = "cv_uploads"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     original_filename: Mapped[str | None] = mapped_column(Text)
     file_type: Mapped[str | None] = mapped_column(Text)
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -42,6 +43,7 @@ class CvProfile(Base):
     __tablename__ = "cv_profiles"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     full_name: Mapped[str | None] = mapped_column(Text)
     email: Mapped[str | None] = mapped_column(Text)
     phone: Mapped[str | None] = mapped_column(Text)
@@ -59,6 +61,7 @@ class WorkExperience(Base):
     __tablename__ = "work_experiences"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     upload_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cv_uploads.id")
     )
@@ -88,6 +91,7 @@ class Education(Base):
     __tablename__ = "education"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     upload_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cv_uploads.id")
     )
@@ -109,6 +113,7 @@ class Project(Base):
     __tablename__ = "projects"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     upload_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cv_uploads.id")
     )
@@ -131,6 +136,7 @@ class Skill(Base):
     __tablename__ = "skills"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     name: Mapped[str] = mapped_column(Text, nullable=False)
     canonical_name: Mapped[str | None] = mapped_column(Text)
     category: Mapped[str | None] = mapped_column(Text)
@@ -152,6 +158,7 @@ class Activity(Base):
     __tablename__ = "activities"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     upload_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cv_uploads.id")
     )
@@ -181,6 +188,7 @@ class UnclassifiedBlock(Base):
     __tablename__ = "unclassified_blocks"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     upload_source_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("cv_uploads.id")
     )
@@ -195,6 +203,7 @@ class Application(Base):
     __tablename__ = "applications"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     company_name: Mapped[str] = mapped_column(Text, nullable=False)
     role_title: Mapped[str | None] = mapped_column(Text)
     jd_raw: Mapped[str] = mapped_column(Text, nullable=False)
@@ -217,6 +226,7 @@ class CvVersion(Base):
     __tablename__ = "cv_versions"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     application_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True), ForeignKey("applications.id")
     )
@@ -238,6 +248,7 @@ class TailoringRule(Base):
     __tablename__ = "tailoring_rules"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
+    user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     rule_text: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)

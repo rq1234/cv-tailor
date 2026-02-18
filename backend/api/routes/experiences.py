@@ -9,6 +9,7 @@ from pydantic import BaseModel
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.auth import get_current_user
 from backend.models.database import get_db
 from backend.models.tables import Activity, CvVersion, Education, Project, Skill, UnclassifiedBlock, WorkExperience
 from backend.schemas.pydantic import ActivityOut, ActivityUpdate, WorkExperienceOut, WorkExperienceUpdate
@@ -22,10 +23,14 @@ async def update_experience(
     experience_id: uuid.UUID,
     update: WorkExperienceUpdate,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update a parsed work experience (user correction)."""
     result = await db.execute(
-        select(WorkExperience).where(WorkExperience.id == experience_id)
+        select(WorkExperience).where(
+            WorkExperience.id == experience_id,
+            WorkExperience.user_id == user_id,
+        )
     )
     exp = result.scalar_one_or_none()
     if not exp:
@@ -53,10 +58,14 @@ async def update_experience(
 async def delete_experience(
     experience_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a work experience."""
     result = await db.execute(
-        select(WorkExperience).where(WorkExperience.id == experience_id)
+        select(WorkExperience).where(
+            WorkExperience.id == experience_id,
+            WorkExperience.user_id == user_id,
+        )
     )
     exp = result.scalar_one_or_none()
     if not exp:
@@ -72,10 +81,14 @@ async def update_activity(
     activity_id: uuid.UUID,
     update: ActivityUpdate,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update a parsed activity (user correction)."""
     result = await db.execute(
-        select(Activity).where(Activity.id == activity_id)
+        select(Activity).where(
+            Activity.id == activity_id,
+            Activity.user_id == user_id,
+        )
     )
     act = result.scalar_one_or_none()
     if not act:
@@ -103,10 +116,14 @@ async def update_activity(
 async def delete_activity(
     activity_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete an activity."""
     result = await db.execute(
-        select(Activity).where(Activity.id == activity_id)
+        select(Activity).where(
+            Activity.id == activity_id,
+            Activity.user_id == user_id,
+        )
     )
     act = result.scalar_one_or_none()
     if not act:
@@ -121,10 +138,14 @@ async def delete_activity(
 async def delete_education(
     education_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete an education entry."""
     result = await db.execute(
-        select(Education).where(Education.id == education_id)
+        select(Education).where(
+            Education.id == education_id,
+            Education.user_id == user_id,
+        )
     )
     edu = result.scalar_one_or_none()
     if not edu:
@@ -139,10 +160,14 @@ async def delete_education(
 async def delete_project(
     project_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a project."""
     result = await db.execute(
-        select(Project).where(Project.id == project_id)
+        select(Project).where(
+            Project.id == project_id,
+            Project.user_id == user_id,
+        )
     )
     proj = result.scalar_one_or_none()
     if not proj:
@@ -157,10 +182,14 @@ async def delete_project(
 async def delete_skill(
     skill_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a skill."""
     result = await db.execute(
-        select(Skill).where(Skill.id == skill_id)
+        select(Skill).where(
+            Skill.id == skill_id,
+            Skill.user_id == user_id,
+        )
     )
     skill = result.scalar_one_or_none()
     if not skill:
@@ -179,6 +208,7 @@ class ReclassifyRequest(BaseModel):
 async def reclassify_to_activities(
     body: ReclassifyRequest,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Move work experience entries to the activities table."""
     new_activity_ids: list[str] = []
@@ -186,7 +216,10 @@ async def reclassify_to_activities(
     for exp_id_str in body.experience_ids:
         exp_id = uuid.UUID(exp_id_str)
         result = await db.execute(
-            select(WorkExperience).where(WorkExperience.id == exp_id)
+            select(WorkExperience).where(
+                WorkExperience.id == exp_id,
+                WorkExperience.user_id == user_id,
+            )
         )
         exp = result.scalar_one_or_none()
         if not exp:
@@ -194,6 +227,7 @@ async def reclassify_to_activities(
 
         # Create Activity from WorkExperience
         activity = Activity(
+            user_id=user_id,
             upload_source_id=exp.upload_source_id,
             organization=exp.company,
             role_title=exp.role_title,
@@ -217,10 +251,12 @@ async def reclassify_to_activities(
         await db.flush()
 
         # Deduplicate within activities namespace
-        await deduplicate_activity(db, activity)
+        await deduplicate_activity(db, activity, user_id)
 
         # Update any CvVersion rows referencing the old experience ID
-        cv_result = await db.execute(select(CvVersion))
+        cv_result = await db.execute(
+            select(CvVersion).where(CvVersion.user_id == user_id)
+        )
         for cv in cv_result.scalars():
             if cv.selected_experiences and exp_id in cv.selected_experiences:
                 cv.selected_experiences = [

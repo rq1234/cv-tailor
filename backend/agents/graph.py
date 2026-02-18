@@ -31,6 +31,7 @@ class PipelineState(BaseModel):
     """State flowing through the LangGraph pipeline."""
 
     application_id: str
+    user_id: str
     jd_raw: str = ""
     jd_parsed: dict = Field(default_factory=dict)
     selection: dict = Field(default_factory=dict)
@@ -44,10 +45,13 @@ class PipelineState(BaseModel):
     error: str | None = None
 
 
-async def _fetch_rules_text(db: AsyncSession) -> str:
+async def _fetch_rules_text(db: AsyncSession, user_id: uuid.UUID) -> str:
     """Fetch active tailoring rules and format as text."""
     rules_result = await db.execute(
-        select(TailoringRule).where(TailoringRule.is_active.is_(True))
+        select(TailoringRule).where(
+            TailoringRule.is_active.is_(True),
+            TailoringRule.user_id == user_id,
+        )
     )
     rules = rules_result.scalars().all()
     if not rules:
@@ -71,10 +75,14 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
     try:
         parsed = await parse_jd(state.jd_raw)
         state.jd_parsed = parsed.model_dump()
+        user_uuid = uuid.UUID(state.user_id)
 
         # Update the application with parsed JD
         result = await db.execute(
-            select(Application).where(Application.id == uuid.UUID(state.application_id))
+            select(Application).where(
+                Application.id == uuid.UUID(state.application_id),
+                Application.user_id == user_uuid,
+            )
         )
         app = result.scalar_one()
         app.jd_parsed = state.jd_parsed
@@ -91,7 +99,8 @@ async def select_experiences_node(state: PipelineState, db: AsyncSession) -> Pip
     if state.error:
         return state
     try:
-        selection = await select_experiences(db, state.jd_parsed)
+        user_uuid = uuid.UUID(state.user_id)
+        selection = await select_experiences(db, state.jd_parsed, user_uuid)
         state.selection = selection.model_dump()
     except Exception as e:
         state.error = f"Experience selection failed: {e}"
@@ -111,10 +120,15 @@ async def analyze_gaps_node(state: PipelineState, db: AsyncSession) -> PipelineS
             state.error = "No experiences selected for gap analysis"
             return state
 
+        user_uuid = uuid.UUID(state.user_id)
+
         # Fetch experiences from DB and convert to plain dicts
         exp_uuids = [uuid.UUID(eid) for eid in selected_exp_ids]
         result = await db.execute(
-            select(WorkExperience).where(WorkExperience.id.in_(exp_uuids))
+            select(WorkExperience).where(
+                WorkExperience.id.in_(exp_uuids),
+                WorkExperience.user_id == user_uuid,
+            )
         )
         exp_dicts = [
             _orm_to_dict(e, ["company", "role_title", "bullets"])
@@ -127,7 +141,10 @@ async def analyze_gaps_node(state: PipelineState, db: AsyncSession) -> PipelineS
         if selected_act_ids:
             act_uuids = [uuid.UUID(aid) for aid in selected_act_ids]
             act_result = await db.execute(
-                select(Activity).where(Activity.id.in_(act_uuids))
+                select(Activity).where(
+                    Activity.id.in_(act_uuids),
+                    Activity.user_id == user_uuid,
+                )
             )
             act_dicts = [
                 _orm_to_dict(a, ["organization", "role_title", "bullets"])
@@ -154,16 +171,21 @@ async def tailor_cv_node(state: PipelineState, db: AsyncSession) -> PipelineStat
             state.error = "No experiences selected for tailoring"
             return state
 
+        user_uuid = uuid.UUID(state.user_id)
+
         # Fetch experiences and rules from DB
         exp_uuids = [uuid.UUID(eid) for eid in selected_exp_ids]
         result = await db.execute(
-            select(WorkExperience).where(WorkExperience.id.in_(exp_uuids))
+            select(WorkExperience).where(
+                WorkExperience.id.in_(exp_uuids),
+                WorkExperience.user_id == user_uuid,
+            )
         )
         exp_dicts = [
             _orm_to_dict(e, ["company", "role_title", "bullets"])
             for e in result.scalars().all()
         ]
-        rules_text = await _fetch_rules_text(db)
+        rules_text = await _fetch_rules_text(db, user_uuid)
 
         tailored = await tailor_experiences(
             exp_dicts, state.jd_parsed, state.gap_analysis, rules_text
@@ -180,13 +202,17 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
     if state.error:
         return state
     try:
-        rules_text = await _fetch_rules_text(db)
+        user_uuid = uuid.UUID(state.user_id)
+        rules_text = await _fetch_rules_text(db, user_uuid)
 
         selected_proj_ids = state.selection.get("selected_projects", [])
         if selected_proj_ids:
             proj_uuids = [uuid.UUID(pid) for pid in selected_proj_ids]
             result = await db.execute(
-                select(Project).where(Project.id.in_(proj_uuids))
+                select(Project).where(
+                    Project.id.in_(proj_uuids),
+                    Project.user_id == user_uuid,
+                )
             )
             proj_dicts = [
                 _orm_to_dict(p, ["name", "description", "bullets"])
@@ -199,7 +225,10 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
         if selected_act_ids:
             act_uuids = [uuid.UUID(aid) for aid in selected_act_ids]
             act_result = await db.execute(
-                select(Activity).where(Activity.id.in_(act_uuids))
+                select(Activity).where(
+                    Activity.id.in_(act_uuids),
+                    Activity.user_id == user_uuid,
+                )
             )
             act_dicts = [
                 _orm_to_dict(a, ["organization", "role_title", "bullets"])
@@ -218,15 +247,22 @@ async def ats_check_node(state: PipelineState, db: AsyncSession) -> PipelineStat
     if state.error:
         return state
     try:
+        user_uuid = uuid.UUID(state.user_id)
         # Build a CV-like structure for ATS checking
         app_result = await db.execute(
-            select(Application).where(Application.id == uuid.UUID(state.application_id))
+            select(Application).where(
+                Application.id == uuid.UUID(state.application_id),
+                Application.user_id == user_uuid,
+            )
         )
         app = app_result.scalar_one()
 
         # Get profile
         profile_result = await db.execute(
-            select(CvProfile).order_by(CvProfile.updated_at.desc()).limit(1)
+            select(CvProfile)
+            .where(CvProfile.user_id == user_uuid)
+            .order_by(CvProfile.updated_at.desc())
+            .limit(1)
         )
         profile = profile_result.scalar_one_or_none()
 
@@ -294,6 +330,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
 
         selection = state.selection
         cv_version = CvVersion(
+            user_id=uuid.UUID(state.user_id),
             application_id=uuid.UUID(state.application_id),
             selected_experiences=[
                 uuid.UUID(e["id"]) for e in selection.get("selected_experiences", [])
@@ -318,7 +355,10 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
 
         # Update application status
         app_result = await db.execute(
-            select(Application).where(Application.id == uuid.UUID(state.application_id))
+            select(Application).where(
+                Application.id == uuid.UUID(state.application_id),
+                Application.user_id == uuid.UUID(state.user_id),
+            )
         )
         app = app_result.scalar_one()
         app.status = "review"
@@ -334,6 +374,7 @@ async def run_pipeline(
     application_id: str,
     jd_raw: str,
     db: AsyncSession,
+    user_id: uuid.UUID,
     on_step: Any | None = None,
 ) -> PipelineState:
     """Run the full tailoring pipeline.
@@ -344,7 +385,7 @@ async def run_pipeline(
         db: Database session
         on_step: Optional async callback called with step name for SSE streaming
     """
-    state = PipelineState(application_id=application_id, jd_raw=jd_raw)
+    state = PipelineState(application_id=application_id, jd_raw=jd_raw, user_id=str(user_id))
 
     steps = [
         ("parsing_jd", parse_jd_node),

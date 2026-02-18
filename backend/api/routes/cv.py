@@ -3,11 +3,13 @@
 from __future__ import annotations
 
 import logging
+import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.auth import get_current_user
 from backend.models.database import get_db
 from backend.models.tables import (
     Activity,
@@ -38,6 +40,7 @@ router = APIRouter(prefix="/api/cv", tags=["cv"])
 async def upload_cv(
     file: UploadFile = File(...),
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Upload a PDF or DOCX CV, extract text, structure with GPT-4o, and store."""
     if not file.filename:
@@ -54,7 +57,7 @@ async def upload_cv(
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
 
     try:
-        return await parse_and_store_cv(db, file_bytes, file.filename, file_type)
+        return await parse_and_store_cv(db, file_bytes, file.filename, file_type, user_id)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
     except RuntimeError as e:
@@ -62,17 +65,26 @@ async def upload_cv(
 
 
 @router.post("/re-embed")
-async def re_embed_experiences(db: AsyncSession = Depends(get_db)):
+async def re_embed_experiences(
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
     """Re-generate embeddings for all records with NULL embeddings."""
-    return await re_embed_all(db)
+    return await re_embed_all(db, user_id)
 
 
 @router.get("/pool", response_model=ExperiencePoolResponse)
-async def get_experience_pool(db: AsyncSession = Depends(get_db)):
+async def get_experience_pool(
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
     """Get the full experience pool — all work experiences, education, projects, skills."""
     # Get profile (most recent)
     profile_result = await db.execute(
-        select(CvProfile).order_by(CvProfile.updated_at.desc()).limit(1)
+        select(CvProfile)
+        .where(CvProfile.user_id == user_id)
+        .order_by(CvProfile.updated_at.desc())
+        .limit(1)
     )
     profile_row = profile_result.scalar_one_or_none()
     profile_out = None
@@ -89,7 +101,11 @@ async def get_experience_pool(db: AsyncSession = Depends(get_db)):
         )
 
     # Get work experiences
-    work_result = await db.execute(select(WorkExperience).order_by(WorkExperience.date_start.desc().nullslast()))
+    work_result = await db.execute(
+        select(WorkExperience)
+        .where(WorkExperience.user_id == user_id)
+        .order_by(WorkExperience.date_start.desc().nullslast())
+    )
     work_exps = [
         WorkExperienceOut(
             id=w.id, company=w.company, role_title=w.role_title, location=w.location,
@@ -102,7 +118,11 @@ async def get_experience_pool(db: AsyncSession = Depends(get_db)):
     ]
 
     # Get education
-    edu_result = await db.execute(select(Education).order_by(Education.date_end.desc().nullslast()))
+    edu_result = await db.execute(
+        select(Education)
+        .where(Education.user_id == user_id)
+        .order_by(Education.date_end.desc().nullslast())
+    )
     education = [
         EducationOut(
             id=e.id, institution=e.institution, degree=e.degree, grade=e.grade,
@@ -113,7 +133,11 @@ async def get_experience_pool(db: AsyncSession = Depends(get_db)):
     ]
 
     # Get projects
-    proj_result = await db.execute(select(Project).order_by(Project.date_end.desc().nullslast()))
+    proj_result = await db.execute(
+        select(Project)
+        .where(Project.user_id == user_id)
+        .order_by(Project.date_end.desc().nullslast())
+    )
     projects = [
         ProjectOut(
             id=p.id, name=p.name, description=p.description,
@@ -126,7 +150,11 @@ async def get_experience_pool(db: AsyncSession = Depends(get_db)):
     ]
 
     # Get activities
-    act_result = await db.execute(select(Activity).order_by(Activity.date_start.desc().nullslast()))
+    act_result = await db.execute(
+        select(Activity)
+        .where(Activity.user_id == user_id)
+        .order_by(Activity.date_start.desc().nullslast())
+    )
     activities = [
         ActivityOut(
             id=a.id, organization=a.organization, role_title=a.role_title, location=a.location,
@@ -139,7 +167,10 @@ async def get_experience_pool(db: AsyncSession = Depends(get_db)):
     ]
 
     # Get skills (deduplicate by lowercase name)
-    skill_result = await db.execute(select(Skill).where(Skill.is_duplicate_of.is_(None)))
+    skill_result = await db.execute(
+        select(Skill)
+        .where(Skill.is_duplicate_of.is_(None), Skill.user_id == user_id)
+    )
     skills = []
     seen_skill_names: set[str] = set()
     for s in skill_result.scalars().all():
