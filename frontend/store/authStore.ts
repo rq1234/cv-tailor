@@ -11,8 +11,8 @@ interface AuthState {
   error: string | null;
   signupEmail: string | null;
   initialize: () => Promise<void>;
-  signIn: (email: string, password: string) => Promise<void>;
-  signUp: (email: string, password: string) => Promise<void>;
+  signIn: (email: string, password: string) => Promise<boolean>;
+  signUp: (email: string, password: string) => Promise<boolean>;
   signOut: () => Promise<void>;
   clearSignupEmail: () => void;
 }
@@ -46,18 +46,20 @@ export const useAuthStore = create<AuthState>((set) => ({
     const { data, error } = await supabase.auth.signInWithPassword({ email, password });
     if (error) {
       set({ loading: false, error: error.message });
-      return;
+      return false;
     }
     set({ loading: false, user: data.user, session: data.session });
+    return true;
   },
   signUp: async (email: string, password: string) => {
     set({ loading: true, error: null });
     const { data, error } = await supabase.auth.signUp({ email, password });
     if (error) {
       set({ loading: false, error: error.message });
-      return;
+      return false;
     }
     set({ loading: false, user: data.user ?? null, session: data.session ?? null, signupEmail: email });
+    return true;
   },
   signOut: async () => {
     set({ loading: true, error: null });
