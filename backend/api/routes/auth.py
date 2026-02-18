@@ -25,6 +25,7 @@ class PasswordResetRequest(BaseModel):
 class PasswordResetConfirm(BaseModel):
     """Confirm password reset with new password."""
 
+    token: str
     password: str = Field(min_length=8, max_length=128)
 
 
@@ -55,8 +56,7 @@ async def request_password_reset(request: Request, req: PasswordResetRequest) ->
 @limiter.limit("10/hour")
 async def confirm_password_reset(
     request: Request,
-    token: str,
-    new_password: str = Field(min_length=8, max_length=128),
+    req: PasswordResetConfirm,
 ) -> dict:
     """Confirm password reset with token and new password.
 
@@ -69,8 +69,8 @@ async def confirm_password_reset(
 
         # Update user password using the reset token
         result = await supabase.auth.update_user(
-            {"password": new_password},
-            jwt=token,
+            {"password": req.password},
+            jwt=req.token,
         )
 
         return {"message": "Password updated successfully."}
