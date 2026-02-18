@@ -9,7 +9,6 @@ import PreviewView from "@/components/review/PreviewView";
 import {
   type BulletDecision,
   type BulletState,
-  type AtsWarning,
   type TailorResult,
   bulletText,
   sortByDateDesc,
@@ -27,7 +26,6 @@ export default function ReviewPage() {
   const [saving, setSaving] = useState(false);
   const [retailoring, setRetailoring] = useState(false);
   const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
-  const [_exportDropdown, setExportDropdown] = useState(false);
   const [decisions, setDecisions] = useState<Record<string, Record<number, BulletState>>>({});
   const [manualEdits, setManualEdits] = useState<Record<string, string>>({});
   const [recoveredFromStorage, setRecoveredFromStorage] = useState(false);
@@ -130,6 +128,7 @@ export default function ReviewPage() {
     setManualEdits({});
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _resetAll = () => {
     resetAllDecisions();
     resetAllEdits();
@@ -253,6 +252,7 @@ export default function ReviewPage() {
     }
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _handleSaveAndExport = async () => {
     if (!result) return;
     setSaving(true);
@@ -284,6 +284,7 @@ export default function ReviewPage() {
 
 
 
+  // eslint-disable-next-line @typescript-eslint/no-unused-vars
   const _handleDownloadLaTeX = async () => {
     if (!result) return;
     setSaving(true);
