@@ -5,17 +5,17 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 
 # ── CV Upload ──────────────────────────────────────────────────────────
 class CvUploadResponse(BaseModel):
     upload_id: uuid.UUID
-    original_filename: str | None
-    file_type: str
+    original_filename: str | None = Field(None, max_length=255)
+    file_type: str = Field(max_length=10)
     raw_text_quality: float | None
-    parsing_status: str
-    parsing_notes: str | None
+    parsing_status: str = Field(max_length=50)
+    parsing_notes: str | None = Field(None, max_length=1000)
 
 
 class ParseSummary(BaseModel):

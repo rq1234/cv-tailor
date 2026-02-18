@@ -9,10 +9,12 @@ interface AuthState {
   session: Session | null;
   loading: boolean;
   error: string | null;
+  signupEmail: string | null;
   initialize: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
+  clearSignupEmail: () => void;
 }
 
 export const useAuthStore = create<AuthState>((set) => ({
@@ -20,6 +22,7 @@ export const useAuthStore = create<AuthState>((set) => ({
   session: null,
   loading: true,
   error: null,
+  signupEmail: null,
   initialize: async () => {
     set({ loading: true, error: null });
     const { data, error } = await supabase.auth.getSession();
@@ -54,7 +57,7 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ loading: false, error: error.message });
       return;
     }
-    set({ loading: false, user: data.user ?? null, session: data.session ?? null });
+    set({ loading: false, user: data.user ?? null, session: data.session ?? null, signupEmail: email });
   },
   signOut: async () => {
     set({ loading: true, error: null });
@@ -65,4 +68,5 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     set({ loading: false, user: null, session: null });
   },
+  clearSignupEmail: () => set({ signupEmail: null }),
 }));
