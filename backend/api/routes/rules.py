@@ -4,11 +4,12 @@ from __future__ import annotations
 
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
+from backend.api.db_helpers import apply_update, delete_or_404, get_or_404
 from backend.models.database import get_db
 from backend.models.tables import TailoringRule
 from backend.schemas.pydantic import TailoringRuleCreate, TailoringRuleOut, TailoringRuleUpdate
@@ -27,12 +28,7 @@ async def get_rules(
         .where(TailoringRule.user_id == user_id)
         .order_by(TailoringRule.created_at.desc())
     )
-    return [
-        TailoringRuleOut(
-            id=r.id, rule_text=r.rule_text, is_active=r.is_active, created_at=r.created_at,
-        )
-        for r in result.scalars().all()
-    ]
+    return [TailoringRuleOut.model_validate(r) for r in result.scalars().all()]
 
 
 @router.post("", response_model=TailoringRuleOut)
@@ -46,35 +42,22 @@ async def create_rule(
     db.add(rule)
     await db.commit()
     await db.refresh(rule)
-    return TailoringRuleOut(
-        id=rule.id, rule_text=rule.rule_text, is_active=rule.is_active, created_at=rule.created_at,
-    )
+    return TailoringRuleOut.model_validate(rule)
 
 
 @router.put("/{rule_id}", response_model=TailoringRuleOut)
 async def update_rule(
-    rule_id: uuid.UUID, body: TailoringRuleUpdate, db: AsyncSession = Depends(get_db),
+    rule_id: uuid.UUID,
+    body: TailoringRuleUpdate,
+    db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update a tailoring rule."""
-    result = await db.execute(
-        select(TailoringRule).where(
-            TailoringRule.id == rule_id,
-            TailoringRule.user_id == user_id,
-        )
-    )
-    rule = result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
-
-    update_data = body.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(rule, field, value)
+    rule = await get_or_404(db, TailoringRule, rule_id, user_id, "Rule not found")
+    apply_update(rule, body.model_dump(exclude_unset=True))
     await db.commit()
     await db.refresh(rule)
-    return TailoringRuleOut(
-        id=rule.id, rule_text=rule.rule_text, is_active=rule.is_active, created_at=rule.created_at,
-    )
+    return TailoringRuleOut.model_validate(rule)
 
 
 @router.delete("/{rule_id}")
@@ -84,15 +67,4 @@ async def delete_rule(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a tailoring rule."""
-    result = await db.execute(
-        select(TailoringRule).where(
-            TailoringRule.id == rule_id,
-            TailoringRule.user_id == user_id,
-        )
-    )
-    rule = result.scalar_one_or_none()
-    if not rule:
-        raise HTTPException(status_code=404, detail="Rule not found")
-    await db.delete(rule)
-    await db.commit()
-    return {"status": "deleted"}
+    return await delete_or_404(db, TailoringRule, rule_id, user_id, "Rule not found")

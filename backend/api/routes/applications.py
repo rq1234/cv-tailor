@@ -6,10 +6,10 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
+from backend.api.db_helpers import get_or_404
 from backend.models.database import get_db
 from backend.models.tables import Application
 from backend.schemas.pydantic import ApplicationCreate, ApplicationOut
@@ -39,17 +39,7 @@ async def create_application(
     db.add(app)
     await db.commit()
     await db.refresh(app)
-
-    return ApplicationOut(
-        id=app.id,
-        company_name=app.company_name,
-        role_title=app.role_title,
-        jd_raw=app.jd_raw,
-        jd_parsed=app.jd_parsed,
-        jd_source=app.jd_source,
-        status=app.status,
-        created_at=app.created_at,
-    )
+    return ApplicationOut.model_validate(app)
 
 
 class ScreenshotExtractResponse(BaseModel):
@@ -57,7 +47,10 @@ class ScreenshotExtractResponse(BaseModel):
 
 
 @router.post("/screenshot", response_model=ScreenshotExtractResponse)
-async def extract_screenshot_text(file: UploadFile):
+async def extract_screenshot_text(
+    file: UploadFile,
+    user_id: uuid.UUID = Depends(get_current_user),
+):
     """Extract job description text from a screenshot using GPT-4o Vision."""
     if file.content_type not in ALLOWED_IMAGE_TYPES:
         raise HTTPException(
@@ -80,23 +73,5 @@ async def get_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Get a single application by ID."""
-    result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    return ApplicationOut(
-        id=app.id,
-        company_name=app.company_name,
-        role_title=app.role_title,
-        jd_raw=app.jd_raw,
-        jd_parsed=app.jd_parsed,
-        jd_source=app.jd_source,
-        status=app.status,
-        created_at=app.created_at,
-    )
+    app = await get_or_404(db, Application, application_id, user_id, "Application not found")
+    return ApplicationOut.model_validate(app)

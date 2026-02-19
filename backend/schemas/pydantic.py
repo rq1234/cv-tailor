@@ -5,7 +5,10 @@ from __future__ import annotations
 import uuid
 from datetime import date, datetime
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+# Shared config for all response schemas that are built from ORM objects
+_ORM_CONFIG = ConfigDict(from_attributes=True)
 
 
 # ── CV Upload ──────────────────────────────────────────────────────────
@@ -57,6 +60,7 @@ class DuplicateItem(BaseModel):
 
 # ── Experience Pool ────────────────────────────────────────────────────
 class WorkExperienceOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     company: str | None
     role_title: str | None
@@ -86,6 +90,7 @@ class WorkExperienceUpdate(BaseModel):
 
 
 class EducationOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     institution: str | None
     degree: str | None
@@ -99,6 +104,7 @@ class EducationOut(BaseModel):
 
 
 class ProjectOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     name: str | None
     description: str | None
@@ -114,6 +120,7 @@ class ProjectOut(BaseModel):
 
 
 class ActivityOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     organization: str | None
     role_title: str | None
@@ -143,6 +150,7 @@ class ActivityUpdate(BaseModel):
 
 
 class SkillOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     name: str
     canonical_name: str | None
@@ -161,6 +169,7 @@ class ExperiencePoolResponse(BaseModel):
 
 
 class CvProfileOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     full_name: str | None
     email: str | None
@@ -180,6 +189,7 @@ class ApplicationCreate(BaseModel):
 
 
 class ApplicationOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     company_name: str
     role_title: str | None
@@ -227,6 +237,7 @@ class TailoringRuleCreate(BaseModel):
 
 
 class TailoringRuleOut(BaseModel):
+    model_config = _ORM_CONFIG
     id: uuid.UUID
     rule_text: str
     is_active: bool

@@ -41,6 +41,27 @@ async function request<T>(
   return res.json();
 }
 
+/** Shared multipart upload helper — avoids duplicating fetch + error handling. */
+async function _uploadFile<T>(path: string, file: File): Promise<T> {
+  const formData = new FormData();
+  formData.append("file", file);
+
+  const authHeaders = await getAuthHeaders();
+  const res = await fetch(`${API_URL}${path}`, {
+    method: "POST",
+    body: formData,
+    headers: authHeaders,
+  });
+
+  if (!res.ok) {
+    handleAuthFailure(res.status);
+    const error = await res.json().catch(() => ({ detail: res.statusText }));
+    throw new Error(error.detail || `Upload failed: ${res.status}`);
+  }
+
+  return res.json();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>(path),
 
@@ -59,45 +80,11 @@ export const api = {
   delete: <T>(path: string) =>
     request<T>(path, { method: "DELETE" }),
 
-  upload: async <T>(path: string, file: File): Promise<T> => {
-    const formData = new FormData();
-    formData.append("file", file);
+  upload: <T>(path: string, file: File): Promise<T> =>
+    _uploadFile<T>(path, file),
 
-    const authHeaders = await getAuthHeaders();
-    const res = await fetch(`${API_URL}${path}`, {
-      method: "POST",
-      body: formData,
-      headers: authHeaders,
-    });
-
-    if (!res.ok) {
-      handleAuthFailure(res.status);
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || `Upload failed: ${res.status}`);
-    }
-
-    return res.json();
-  },
-
-  uploadScreenshot: async (file: File): Promise<{ extracted_text: string }> => {
-    const formData = new FormData();
-    formData.append("file", file);
-
-    const authHeaders = await getAuthHeaders();
-    const res = await fetch(`${API_URL}/api/applications/screenshot`, {
-      method: "POST",
-      body: formData,
-      headers: authHeaders,
-    });
-
-    if (!res.ok) {
-      handleAuthFailure(res.status);
-      const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || `Screenshot extraction failed: ${res.status}`);
-    }
-
-    return res.json();
-  },
+  uploadScreenshot: (file: File): Promise<{ extracted_text: string }> =>
+    _uploadFile<{ extracted_text: string }>("/api/applications/screenshot", file),
 
   /** Download a file as a Blob (for PDF/DOCX/LaTeX exports). */
   downloadFile: async (

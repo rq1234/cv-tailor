@@ -21,6 +21,11 @@ export default function LoginPage() {
       return;
     }
 
+    if (mode === "signup" && password.length < 8) {
+      setLocalError("Password must be at least 8 characters.");
+      return;
+    }
+
     if (mode === "signup" && password !== confirmPassword) {
       setLocalError("Passwords do not match.");
       return;
@@ -92,6 +97,9 @@ export default function LoginPage() {
               className="w-full rounded-md border px-3 py-2 text-sm"
               placeholder="••••••••"
             />
+            {mode === "signup" && (
+              <p className="text-xs text-muted-foreground">Minimum 8 characters</p>
+            )}
           </div>
           {mode === "signup" && (
             <div className="space-y-1">

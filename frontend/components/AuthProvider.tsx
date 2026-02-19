@@ -9,20 +9,24 @@ const PUBLIC_ROUTES = new Set(["/login"]);
 export default function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
   const pathname = usePathname();
-  const { user, loading, initialize } = useAuthStore();
+  // Use initializing (not loading) so auth operations like changePassword
+  // don't replace the entire page with a loading screen.
+  const { user, initializing, initialize } = useAuthStore();
 
   useEffect(() => {
     initialize();
   }, [initialize]);
 
   useEffect(() => {
-    if (loading) return;
+    if (initializing) return;
     if (!user && !PUBLIC_ROUTES.has(pathname)) {
       router.replace("/login");
+    } else if (user && PUBLIC_ROUTES.has(pathname)) {
+      router.replace("/library");
     }
-  }, [loading, user, pathname, router]);
+  }, [initializing, user, pathname, router]);
 
-  if (loading) {
+  if (initializing) {
     return (
       <div className="flex min-h-screen items-center justify-center">
         <div className="text-sm text-muted-foreground">Loading...</div>
