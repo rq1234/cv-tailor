@@ -3,6 +3,7 @@
  */
 
 import { supabase } from "@/lib/supabase";
+import { useAuthStore } from "@/store/authStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -13,8 +14,10 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
 };
 
 const handleAuthFailure = (status: number) => {
-  if (status === 401 && typeof window !== "undefined") {
-    window.location.href = "/login";
+  if (status === 401) {
+    // Clear auth state; AuthProvider will redirect via Next.js router.
+    // This avoids a hard page reload and lets the component show the error first.
+    useAuthStore.setState({ user: null, session: null });
   }
 };
 
