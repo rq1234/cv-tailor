@@ -11,7 +11,7 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
   const pathname = usePathname();
   // Use initializing (not loading) so auth operations like changePassword
   // don't replace the entire page with a loading screen.
-  const { user, initializing, initialize } = useAuthStore();
+  const { user, initializing, initialize, signupEmail } = useAuthStore();
 
   useEffect(() => {
     initialize();
@@ -21,10 +21,11 @@ export default function AuthProvider({ children }: { children: React.ReactNode }
     if (initializing) return;
     if (!user && !PUBLIC_ROUTES.has(pathname)) {
       router.replace("/login");
-    } else if (user && PUBLIC_ROUTES.has(pathname)) {
+    } else if (user && PUBLIC_ROUTES.has(pathname) && !signupEmail) {
+      // Don't redirect to library while waiting for email confirmation
       router.replace("/library");
     }
-  }, [initializing, user, pathname, router]);
+  }, [initializing, user, pathname, router, signupEmail]);
 
   if (initializing) {
     return (
