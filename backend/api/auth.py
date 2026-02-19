@@ -5,10 +5,15 @@ from __future__ import annotations
 import uuid
 from functools import lru_cache
 
+import logging
+
 import jwt
 from jwt import PyJWKClient
+from jwt.exceptions import PyJWKClientError, PyJWKError
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
+
+logger = logging.getLogger(__name__)
 
 from backend.config import get_settings
 
@@ -65,6 +70,20 @@ async def get_current_user(
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail=f"Unauthorized: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except (PyJWKClientError, PyJWKError) as e:
+        logger.error("JWKS error during token verification: %s", e)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail=f"Could not verify token: {e}",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    except Exception as e:
+        logger.error("Unexpected auth error: %s", e, exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed",
             headers={"WWW-Authenticate": "Bearer"},
         )
 
