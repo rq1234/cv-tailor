@@ -2,13 +2,11 @@
 
 from __future__ import annotations
 
-import json
 import uuid
 from functools import lru_cache
 
-import httpx
 import jwt
-from jwt.algorithms import RSAAlgorithm
+from jwt import PyJWKClient
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
@@ -18,26 +16,11 @@ security = HTTPBearer()
 
 
 @lru_cache(maxsize=1)
-def _get_jwks_keys() -> list[dict]:
-    """Fetch and cache Supabase JWKS public keys (used for RS256 tokens)."""
+def _get_jwks_client() -> PyJWKClient:
+    """Return a cached JWKS client pointed at Supabase's public key endpoint."""
     settings = get_settings()
     url = f"{settings.supabase_url}/auth/v1/.well-known/jwks.json"
-    with httpx.Client(timeout=10) as client:
-        resp = client.get(url)
-        resp.raise_for_status()
-        return resp.json().get("keys", [])
-
-
-def _verify_rs256(token: str) -> dict:
-    """Verify an RS256-signed token using Supabase's JWKS endpoint."""
-    keys = _get_jwks_keys()
-    kid = jwt.get_unverified_header(token).get("kid")
-    for key_data in keys:
-        if kid and key_data.get("kid") != kid:
-            continue
-        public_key = RSAAlgorithm.from_jwk(json.dumps(key_data))
-        return jwt.decode(token, public_key, algorithms=["RS256"], audience="authenticated")
-    raise jwt.InvalidTokenError("No matching RS256 key found in JWKS")
+    return PyJWKClient(url)
 
 
 async def get_current_user(
@@ -45,22 +28,33 @@ async def get_current_user(
 ) -> uuid.UUID:
     """Verify Supabase JWT and return the user_id (UUID).
 
-    Supports both legacy HS256 tokens and new RS256 tokens (JWT Signing Keys).
+    Supports HS256 (legacy secret) and ES256/RS256 (new JWT Signing Keys).
     """
     settings = get_settings()
     token = credentials.credentials
 
     try:
         alg = jwt.get_unverified_header(token).get("alg", "HS256")
-        if alg == "RS256":
-            payload = _verify_rs256(token)
-        else:
+
+        if alg == "HS256":
+            # Legacy: verify with shared secret
             payload = jwt.decode(
                 token,
                 settings.supabase_jwt_secret,
                 algorithms=["HS256"],
                 audience="authenticated",
             )
+        else:
+            # New JWT Signing Keys (ES256, RS256): verify via JWKS
+            jwks_client = _get_jwks_client()
+            signing_key = jwks_client.get_signing_key_from_jwt(token)
+            payload = jwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                audience="authenticated",
+            )
+
     except jwt.ExpiredSignatureError:
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
