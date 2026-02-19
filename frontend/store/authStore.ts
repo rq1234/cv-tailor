@@ -75,7 +75,9 @@ export const useAuthStore = create<AuthState>((set) => ({
       }
       return false;
     }
-    set({ loading: false, user: data.user ?? null, session: data.session ?? null, signupEmail: email });
+    // Don't set user — email confirmation is required before a real session exists.
+    // Showing signupEmail triggers the "Check your email" screen.
+    set({ loading: false, user: null, session: null, signupEmail: email });
     return true;
   },
   signOut: async () => {

@@ -8,12 +8,12 @@ export default function LoginPage() {
   const router = useRouter();
   const { signIn, signUp, loading, error, signupEmail, clearSignupEmail, user, initializing } = useAuthStore();
 
-  // If already authenticated, redirect away immediately
+  // If already authenticated (and not waiting for email confirmation), redirect away
   useEffect(() => {
-    if (!initializing && user) {
+    if (!initializing && user && !signupEmail) {
       router.replace("/library");
     }
-  }, [user, initializing, router]);
+  }, [user, initializing, signupEmail, router]);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
