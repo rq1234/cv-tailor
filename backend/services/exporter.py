@@ -9,9 +9,9 @@ from datetime import date
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.api.db_helpers import fetch_latest_profile
 from backend.models.tables import (
     Activity,
-    CvProfile,
     CvVersion,
     Education,
     Project,
@@ -37,13 +37,7 @@ async def _build_cv_context(
 ) -> dict:
     """Build the template context dict from a CvVersion and its referenced records."""
     # Profile
-    profile_result = await db.execute(
-        select(CvProfile)
-        .where(CvProfile.user_id == user_id)
-        .order_by(CvProfile.updated_at.desc())
-        .limit(1)
-    )
-    profile_row = profile_result.scalar_one_or_none()
+    profile_row = await fetch_latest_profile(db, user_id)
     profile = {}
     if profile_row:
         profile = {
@@ -260,7 +254,7 @@ async def _build_cv_context(
     accepted = cv_version.accepted_changes or {}
     if skill_ids:
         result = await db.execute(
-            select(Skill).where(Skill.id.in_(skill_ids))
+            select(Skill).where(Skill.id.in_(skill_ids), Skill.user_id == user_id)
         )
         skills_by_id = {skill.id: skill for skill in result.scalars().all()}
         # Iterate in the order stored in selected_skills (JD-relevant first)
@@ -312,6 +306,23 @@ async def _build_cv_context(
         "skills_by_category": skills_by_category,
     }
 
+
+
+def _escape_latex_url(url: str) -> str:
+    """Escape characters that break LaTeX inside \\href{url} arguments.
+
+    URLs live inside a brace group so only { } % # \\ need escaping.
+    Other URL characters (: / ? = & @) are safe in this context.
+    """
+    if not url:
+        return ""
+    url = str(url)
+    url = url.replace("\\", r"\textbackslash{}")
+    url = url.replace("{", r"\{")
+    url = url.replace("}", r"\}")
+    url = url.replace("%", r"\%")
+    url = url.replace("#", r"\#")
+    return url
 
 
 def _escape_latex(text: str) -> str:
@@ -531,13 +542,13 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
     if phone:
         contact_items.append(f"\\small {_escape_latex(phone)}")
     if email:
-        contact_items.append(f"\\href{{mailto:{email}}}{{\\underline{{{_escape_latex(email)}}}}}")
+        contact_items.append(f"\\href{{mailto:{_escape_latex_url(email)}}}{{\\underline{{{_escape_latex(email)}}}}}")
     if linkedin:
         display_linkedin = linkedin.replace("https://", "").replace("http://", "")
-        contact_items.append(f"\\href{{{linkedin}}}{{\\underline{{{_escape_latex(display_linkedin)}}}}}")
+        contact_items.append(f"\\href{{{_escape_latex_url(linkedin)}}}{{\\underline{{{_escape_latex(display_linkedin)}}}}}")
     if portfolio:
         display_portfolio = portfolio.replace("https://", "").replace("http://", "")
-        contact_items.append(f"\\href{{{portfolio}}}{{\\underline{{{_escape_latex(display_portfolio)}}}}}")
+        contact_items.append(f"\\href{{{_escape_latex_url(portfolio)}}}{{\\underline{{{_escape_latex(display_portfolio)}}}}}")
     if location:
         contact_items.append(_escape_latex(location))
 

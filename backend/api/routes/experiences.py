@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import uuid
+from enum import Enum
 
 from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel
@@ -10,6 +11,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
+from backend.api.db_helpers import apply_update, delete_or_404, get_or_404
 from backend.models.database import get_db
 from backend.models.tables import Activity, CvVersion, Education, Project, Skill, UnclassifiedBlock, WorkExperience
 from backend.schemas.pydantic import ActivityOut, ActivityUpdate, WorkExperienceOut, WorkExperienceUpdate
@@ -26,32 +28,14 @@ async def update_experience(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update a parsed work experience (user correction)."""
-    result = await db.execute(
-        select(WorkExperience).where(
-            WorkExperience.id == experience_id,
-            WorkExperience.user_id == user_id,
-        )
-    )
-    exp = result.scalar_one_or_none()
-    if not exp:
-        raise HTTPException(status_code=404, detail="Experience not found")
+    exp = await get_or_404(db, WorkExperience, experience_id, user_id, "Experience not found")
 
-    update_data = update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(exp, field, value)
-
+    apply_update(exp, update.model_dump(exclude_unset=True))
     exp.is_reviewed = True
     exp.needs_review = False
     await db.commit()
     await db.refresh(exp)
-
-    return WorkExperienceOut(
-        id=exp.id, company=exp.company, role_title=exp.role_title, location=exp.location,
-        date_start=exp.date_start, date_end=exp.date_end, is_current=exp.is_current,
-        bullets=exp.bullets, domain_tags=exp.domain_tags, skill_tags=exp.skill_tags,
-        variant_group_id=exp.variant_group_id, is_primary_variant=exp.is_primary_variant,
-        needs_review=exp.needs_review, review_reason=exp.review_reason,
-    )
+    return WorkExperienceOut.model_validate(exp)
 
 
 @router.delete("/{experience_id}")
@@ -61,19 +45,7 @@ async def delete_experience(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a work experience."""
-    result = await db.execute(
-        select(WorkExperience).where(
-            WorkExperience.id == experience_id,
-            WorkExperience.user_id == user_id,
-        )
-    )
-    exp = result.scalar_one_or_none()
-    if not exp:
-        raise HTTPException(status_code=404, detail="Experience not found")
-
-    await db.delete(exp)
-    await db.commit()
-    return {"status": "deleted"}
+    return await delete_or_404(db, WorkExperience, experience_id, user_id, "Experience not found")
 
 
 @router.put("/activities/{activity_id}", response_model=ActivityOut)
@@ -84,32 +56,14 @@ async def update_activity(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update a parsed activity (user correction)."""
-    result = await db.execute(
-        select(Activity).where(
-            Activity.id == activity_id,
-            Activity.user_id == user_id,
-        )
-    )
-    act = result.scalar_one_or_none()
-    if not act:
-        raise HTTPException(status_code=404, detail="Activity not found")
+    act = await get_or_404(db, Activity, activity_id, user_id, "Activity not found")
 
-    update_data = update.model_dump(exclude_unset=True)
-    for field, value in update_data.items():
-        setattr(act, field, value)
-
+    apply_update(act, update.model_dump(exclude_unset=True))
     act.is_reviewed = True
     act.needs_review = False
     await db.commit()
     await db.refresh(act)
-
-    return ActivityOut(
-        id=act.id, organization=act.organization, role_title=act.role_title, location=act.location,
-        date_start=act.date_start, date_end=act.date_end, is_current=act.is_current,
-        bullets=act.bullets, domain_tags=act.domain_tags, skill_tags=act.skill_tags,
-        variant_group_id=act.variant_group_id, is_primary_variant=act.is_primary_variant,
-        needs_review=act.needs_review, review_reason=act.review_reason,
-    )
+    return ActivityOut.model_validate(act)
 
 
 @router.delete("/activities/{activity_id}")
@@ -119,19 +73,7 @@ async def delete_activity(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete an activity."""
-    result = await db.execute(
-        select(Activity).where(
-            Activity.id == activity_id,
-            Activity.user_id == user_id,
-        )
-    )
-    act = result.scalar_one_or_none()
-    if not act:
-        raise HTTPException(status_code=404, detail="Activity not found")
-
-    await db.delete(act)
-    await db.commit()
-    return {"status": "deleted"}
+    return await delete_or_404(db, Activity, activity_id, user_id, "Activity not found")
 
 
 @router.delete("/education/{education_id}")
@@ -141,19 +83,7 @@ async def delete_education(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete an education entry."""
-    result = await db.execute(
-        select(Education).where(
-            Education.id == education_id,
-            Education.user_id == user_id,
-        )
-    )
-    edu = result.scalar_one_or_none()
-    if not edu:
-        raise HTTPException(status_code=404, detail="Education not found")
-
-    await db.delete(edu)
-    await db.commit()
-    return {"status": "deleted"}
+    return await delete_or_404(db, Education, education_id, user_id, "Education not found")
 
 
 @router.delete("/projects/{project_id}")
@@ -163,19 +93,7 @@ async def delete_project(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a project."""
-    result = await db.execute(
-        select(Project).where(
-            Project.id == project_id,
-            Project.user_id == user_id,
-        )
-    )
-    proj = result.scalar_one_or_none()
-    if not proj:
-        raise HTTPException(status_code=404, detail="Project not found")
-
-    await db.delete(proj)
-    await db.commit()
-    return {"status": "deleted"}
+    return await delete_or_404(db, Project, project_id, user_id, "Project not found")
 
 
 @router.delete("/skills/{skill_id}")
@@ -185,19 +103,16 @@ async def delete_skill(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete a skill."""
-    result = await db.execute(
-        select(Skill).where(
-            Skill.id == skill_id,
-            Skill.user_id == user_id,
-        )
-    )
-    skill = result.scalar_one_or_none()
-    if not skill:
-        raise HTTPException(status_code=404, detail="Skill not found")
+    return await delete_or_404(db, Skill, skill_id, user_id, "Skill not found")
 
-    await db.delete(skill)
-    await db.commit()
-    return {"status": "deleted"}
+
+class ResolvedAs(str, Enum):
+    work_experience = "work_experience"
+    education = "education"
+    project = "project"
+    activity = "activity"
+    skill = "skill"
+    ignore = "ignore"
 
 
 class ReclassifyRequest(BaseModel):
@@ -277,17 +192,12 @@ async def reclassify_to_activities(
 @router.post("/{block_id}/resolve-unclassified")
 async def resolve_unclassified(
     block_id: uuid.UUID,
-    resolved_as: str,
+    resolved_as: ResolvedAs,
     db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
 ):
     """User classifies an unclassified block."""
-    result = await db.execute(
-        select(UnclassifiedBlock).where(UnclassifiedBlock.id == block_id)
-    )
-    block = result.scalar_one_or_none()
-    if not block:
-        raise HTTPException(status_code=404, detail="Block not found")
-
+    block = await get_or_404(db, UnclassifiedBlock, block_id, user_id, "Block not found")
     block.user_resolved = True
     block.resolved_as = resolved_as
     await db.commit()

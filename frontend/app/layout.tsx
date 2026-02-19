@@ -5,6 +5,11 @@ import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
 import UserMenu from "@/components/UserMenu";
 
+// This app is fully authenticated — disable static generation for all routes.
+// Without this, Next.js tries to prerender pages at build time when
+// NEXT_PUBLIC_SUPABASE_URL is not set, causing "supabaseUrl is required" errors.
+export const dynamic = "force-dynamic";
+
 const geistSans = localFont({
   src: "./fonts/GeistVF.woff",
   variable: "--font-geist-sans",

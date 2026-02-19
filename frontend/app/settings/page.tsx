@@ -2,8 +2,9 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useFileSystem } from "@/hooks/useFileSystem";
-
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+import { useAuthStore } from "@/store/authStore";
+import ChangePasswordModal from "@/components/ChangePasswordModal";
+import { api } from "@/lib/api";
 
 interface TailoringRule {
   id: string;
@@ -14,20 +15,21 @@ interface TailoringRule {
 
 export default function SettingsPage() {
   const { directoryName, pickDirectory, hasDirectory } = useFileSystem();
+  const { user, signOut } = useAuthStore();
   const [rules, setRules] = useState<TailoringRule[]>([]);
   const [newRule, setNewRule] = useState("");
   const [loading, setLoading] = useState(true);
+  const [rulesError, setRulesError] = useState<string | null>(null);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
+  const [showPasswordModal, setShowPasswordModal] = useState(false);
 
   const fetchRules = useCallback(async () => {
     try {
-      const res = await fetch(`${API_URL}/api/rules`);
-      if (res.ok) {
-        setRules(await res.json());
-      }
+      const data = await api.get<TailoringRule[]>("/api/rules");
+      setRules(data);
     } catch {
-      // ignore
+      setRulesError("Failed to load rules.");
     } finally {
       setLoading(false);
     }
@@ -39,29 +41,34 @@ export default function SettingsPage() {
 
   const addRule = async () => {
     if (!newRule.trim()) return;
-    const res = await fetch(`${API_URL}/api/rules`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rule_text: newRule.trim() }),
-    });
-    if (res.ok) {
+    setRulesError(null);
+    try {
+      await api.post("/api/rules", { rule_text: newRule.trim() });
       setNewRule("");
       fetchRules();
+    } catch {
+      setRulesError("Failed to add rule. Please try again.");
     }
   };
 
   const toggleRule = async (rule: TailoringRule) => {
-    await fetch(`${API_URL}/api/rules/${rule.id}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ is_active: !rule.is_active }),
-    });
-    fetchRules();
+    setRulesError(null);
+    try {
+      await api.put(`/api/rules/${rule.id}`, { is_active: !rule.is_active });
+      fetchRules();
+    } catch {
+      setRulesError("Failed to update rule. Please try again.");
+    }
   };
 
   const deleteRule = async (id: string) => {
-    await fetch(`${API_URL}/api/rules/${id}`, { method: "DELETE" });
-    fetchRules();
+    setRulesError(null);
+    try {
+      await api.delete(`/api/rules/${id}`);
+      fetchRules();
+    } catch {
+      setRulesError("Failed to delete rule. Please try again.");
+    }
   };
 
   const startEdit = (rule: TailoringRule) => {
@@ -71,14 +78,15 @@ export default function SettingsPage() {
 
   const saveEdit = async () => {
     if (!editingId || !editText.trim()) return;
-    await fetch(`${API_URL}/api/rules/${editingId}`, {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ rule_text: editText.trim() }),
-    });
-    setEditingId(null);
-    setEditText("");
-    fetchRules();
+    setRulesError(null);
+    try {
+      await api.put(`/api/rules/${editingId}`, { rule_text: editText.trim() });
+      setEditingId(null);
+      setEditText("");
+      fetchRules();
+    } catch {
+      setRulesError("Failed to save rule. Please try again.");
+    }
   };
 
   return (
@@ -114,6 +122,12 @@ export default function SettingsPage() {
           Custom rules that the AI will follow when rewriting your CV bullets.
           Active rules are applied to every tailoring run.
         </p>
+
+        {rulesError && (
+          <div className="rounded-md bg-red-50 px-3 py-2 text-sm text-red-700">
+            {rulesError}
+          </div>
+        )}
 
         {/* Add new rule */}
         <div className="flex gap-2">
@@ -224,6 +238,41 @@ export default function SettingsPage() {
           </div>
         )}
       </section>
+
+      {/* Account Section */}
+      <section className="max-w-2xl space-y-4">
+        <div className="flex items-center justify-between">
+          <div>
+            <h3 className="text-lg font-semibold">Account</h3>
+            <p className="text-sm text-muted-foreground">Manage your account settings</p>
+          </div>
+        </div>
+
+        <div className="rounded-lg border p-4 space-y-4">
+          {user && (
+            <div>
+              <label className="text-sm font-medium">Email</label>
+              <p className="text-sm text-muted-foreground">{user.email}</p>
+            </div>
+          )}
+
+          <button
+            onClick={() => setShowPasswordModal(true)}
+            className="w-full rounded-md bg-black px-3 py-2 text-sm font-medium text-white hover:bg-black/90"
+          >
+            Change Password
+          </button>
+
+          <button
+            onClick={signOut}
+            className="w-full rounded-md border px-3 py-2 text-sm font-medium hover:bg-gray-50"
+          >
+            Sign Out
+          </button>
+        </div>
+      </section>
+
+      <ChangePasswordModal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
     </div>
   );
 }
