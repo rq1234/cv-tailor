@@ -12,11 +12,13 @@ from starlette.requests import Request
 from starlette.responses import JSONResponse
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
 
 from backend.api.routes import applications, auth, cv, experiences, export, rules, tailor  # noqa: E402
 from backend.config import get_settings
 
 settings = get_settings()
+logger.info("CORS origins: %s", settings.cors_origins)
 
 app = FastAPI(title="CV Tailor API", version="0.1.0")
 
@@ -50,6 +52,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https://cv-tailor[a-zA-Z0-9\-]*\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
