@@ -7,7 +7,7 @@ from functools import lru_cache
 from pathlib import Path
 
 from dotenv import load_dotenv
-from pydantic import Field
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings
 
 # Load .env before anything reads os.getenv
@@ -60,6 +60,25 @@ class Settings(BaseSettings):
     bullet_max_chars: int = 140
 
     model_config = {"env_file": ".env", "extra": "ignore"}
+
+    @model_validator(mode="after")
+    def _check_required_secrets(self) -> "Settings":
+        """Fail fast at startup if critical secrets are missing."""
+        missing = [
+            name for name, value in [
+                ("SUPABASE_JWT_SECRET", self.supabase_jwt_secret),
+                ("SUPABASE_URL", self.supabase_url),
+                ("SUPABASE_SERVICE_KEY", self.supabase_service_key),
+                ("DATABASE_URL", self.database_url),
+                ("OPENAI_API_KEY", self.openai_api_key),
+            ]
+            if not value
+        ]
+        if missing:
+            raise ValueError(
+                f"Missing required environment variables: {', '.join(missing)}"
+            )
+        return self
 
 
 @lru_cache

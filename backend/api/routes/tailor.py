@@ -6,24 +6,27 @@ import asyncio
 import json
 import uuid
 
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import bindparam, func, select, text
+from fastapi import APIRouter, Depends, HTTPException, Request
+from slowapi import Limiter
+from slowapi.util import get_remote_address
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
-from pgvector.sqlalchemy import Vector
 
 from backend.agents.graph import run_pipeline
 from backend.api.auth import get_current_user
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, TailoringRule, WorkExperience
 from backend.schemas.pydantic import TailorRunRequest
-from backend.services.embedder import embed_text
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 @router.post("/run")
+@limiter.limit("20/hour")
 async def run_tailoring(
+    request: Request,
     body: TailorRunRequest,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
@@ -110,131 +113,6 @@ async def run_tailoring(
 
     return EventSourceResponse(event_generator())
 
-
-@router.get("/debug-selection/{application_id}")
-async def debug_selection(
-    application_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
-):
-    """Inspect similarity scores used for experience selection."""
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = app_result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    jd_parsed = app.jd_parsed or {}
-    if not jd_parsed:
-        raise HTTPException(status_code=400, detail="JD not parsed yet")
-
-    # Build JD text for embedding (mirror draft_selector)
-    jd_text_parts = []
-    for field in ["required_skills", "nice_to_have_skills", "keywords"]:
-        if jd_parsed.get(field):
-            jd_text_parts.extend(jd_parsed[field])
-    if jd_parsed.get("role_summary"):
-        jd_text_parts.append(jd_parsed["role_summary"])
-    if jd_parsed.get("domain"):
-        jd_text_parts.append(jd_parsed["domain"])
-
-    jd_embed_text = " ".join(jd_text_parts)
-    jd_embedding = await embed_text(jd_embed_text)
-
-    # Domain keywords for boost (mirror draft_selector)
-    domain = (jd_parsed.get("domain") or "").lower()
-    domain_keywords: set[str] = set()
-    if domain:
-        domain_keywords.add(domain)
-    for kw in (
-        "tech",
-        "software",
-        "engineer",
-        "data",
-        "quant",
-        "trading",
-        "fintech",
-        "consult",
-        "strategy",
-        "finance",
-        "bank",
-        "investment",
-    ):
-        if kw in domain:
-            domain_keywords.add(kw)
-
-    total_result = await db.execute(
-        select(func.count())
-        .select_from(WorkExperience)
-        .where(
-            WorkExperience.embedding.is_not(None),
-            WorkExperience.user_id == user_id,
-        )
-    )
-    total_with_embeddings = total_result.scalar_one()
-
-    stmt = text("""
-        SELECT id, company, role_title, variant_group_id, domain_tags,
-               1 - (embedding <=> :embedding) as similarity
-        FROM work_experiences
-                WHERE embedding IS NOT NULL
-                    AND user_id = :user_id
-        ORDER BY similarity DESC
-        LIMIT 30
-    """).bindparams(bindparam("embedding", type_=Vector))
-
-    result = await db.execute(stmt, {"embedding": jd_embedding, "user_id": user_id})
-    rows = result.fetchall()
-
-    # Apply domain boost and selection logic
-    DOMAIN_BOOST = 0.08
-    scored_rows = []
-    for row in rows:
-        exp_id, company, role_title, variant_group_id, exp_domain_tags, similarity = row
-        boosted = float(similarity)
-        if exp_domain_tags and domain_keywords:
-            tags_lower = {t.lower() for t in exp_domain_tags}
-            if tags_lower & domain_keywords:
-                boosted += DOMAIN_BOOST
-        scored_rows.append((exp_id, company, role_title, variant_group_id, exp_domain_tags, float(similarity), boosted))
-
-    scored_rows.sort(key=lambda r: r[6], reverse=True)
-
-    seen_groups: dict[str, str] = {}
-    selected_ids: set[str] = set()
-    for exp_id, company, _role_title, variant_group_id, _tags, _sim, _boosted in scored_rows:
-        group_key = str(variant_group_id) if variant_group_id else str(exp_id)
-        if group_key in seen_groups:
-            prev_company = seen_groups[group_key]
-            if prev_company and company and prev_company.lower() == company.lower():
-                continue
-        seen_groups[group_key] = company or ""
-        selected_ids.add(str(exp_id))
-        if len(selected_ids) >= 8:
-            break
-
-    output = []
-    for exp_id, company, role_title, variant_group_id, exp_domain_tags, similarity, boosted in scored_rows:
-        output.append({
-            "id": str(exp_id),
-            "company": company,
-            "role_title": role_title,
-            "variant_group_id": str(variant_group_id) if variant_group_id else None,
-            "domain_tags": exp_domain_tags or [],
-            "similarity": round(similarity, 4),
-            "boosted_score": round(boosted, 4),
-            "selected": str(exp_id) in selected_ids,
-        })
-
-    return {
-        "total_with_embeddings": total_with_embeddings,
-        "selected_count": len(selected_ids),
-        "top_rows": output,
-    }
 
 
 @router.get("/result/{application_id}")
