@@ -19,7 +19,7 @@ services:
       - key: SUPABASE_JWT_SECRET
         sync: false
       - key: CORS_ORIGINS
-        value: '["https://cv-tailor-alpha.vercel.app"]'
+        value: '["https://cv-tailor-git-main-rong-quans-projects.vercel.app","https://cv-tailor-rong-quans-projects.vercel.app","https://cv-tailor-alpha.vercel.app"]'
       - key: PYTHON_VERSION
         value: "3.12.1"
     healthCheckPath: /health
