@@ -1,12 +1,19 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
 
 export default function LoginPage() {
   const router = useRouter();
-  const { signIn, signUp, loading, error, signupEmail, clearSignupEmail } = useAuthStore();
+  const { signIn, signUp, loading, error, signupEmail, clearSignupEmail, user, initializing } = useAuthStore();
+
+  // If already authenticated, redirect away immediately
+  useEffect(() => {
+    if (!initializing && user) {
+      router.replace("/library");
+    }
+  }, [user, initializing, router]);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
