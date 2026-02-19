@@ -16,6 +16,9 @@ export function useExperiencePool() {
       setPool(validated);
     } catch (error) {
       console.error("Failed to fetch experience pool:", error);
+      // Set pool to empty so the library shows the empty state / upload CTA
+      // rather than spinning forever if the backend is down or slow.
+      setPool({ work_experiences: [], education: [], projects: [], activities: [], skills: [], profile: null });
     } finally {
       setPoolLoading(false);
     }
