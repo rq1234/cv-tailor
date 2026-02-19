@@ -3,7 +3,6 @@
  */
 
 import { supabase } from "@/lib/supabase";
-import { useAuthStore } from "@/store/authStore";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
@@ -11,16 +10,6 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
   const { data } = await supabase.auth.getSession();
   const token = data.session?.access_token;
   return token ? { Authorization: `Bearer ${token}` } : {};
-};
-
-const handleAuthFailure = (status: number) => {
-  if (status === 401) {
-    // Sign out from Supabase (clears localStorage session) AND clear store state.
-    // Without the Supabase signOut, initialize() would restore the user from
-    // localStorage on the next render, causing an infinite /library → /login loop.
-    supabase.auth.signOut();
-    useAuthStore.setState({ user: null, session: null });
-  }
 };
 
 async function request<T>(
@@ -38,7 +27,7 @@ async function request<T>(
   });
 
   if (!res.ok) {
-    handleAuthFailure(res.status);
+
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `Request failed: ${res.status}`);
   }
@@ -59,7 +48,7 @@ async function _uploadFile<T>(path: string, file: File): Promise<T> {
   });
 
   if (!res.ok) {
-    handleAuthFailure(res.status);
+
     const error = await res.json().catch(() => ({ detail: res.statusText }));
     throw new Error(error.detail || `Upload failed: ${res.status}`);
   }
@@ -100,7 +89,7 @@ export const api = {
     const res = await fetch(`${API_URL}${path}`, { method, headers: authHeaders });
 
     if (!res.ok) {
-      handleAuthFailure(res.status);
+  
       const error = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(error.detail || `Download failed: ${res.status}`);
     }
@@ -122,7 +111,7 @@ export const api = {
     });
 
     if (!res.ok) {
-      handleAuthFailure(res.status);
+  
       const error = await res.json().catch(() => ({ detail: res.statusText }));
       throw new Error(error.detail || `Stream failed: ${res.status}`);
     }
