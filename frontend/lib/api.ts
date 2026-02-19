@@ -15,8 +15,10 @@ const getAuthHeaders = async (): Promise<Record<string, string>> => {
 
 const handleAuthFailure = (status: number) => {
   if (status === 401) {
-    // Clear auth state; AuthProvider will redirect via Next.js router.
-    // This avoids a hard page reload and lets the component show the error first.
+    // Sign out from Supabase (clears localStorage session) AND clear store state.
+    // Without the Supabase signOut, initialize() would restore the user from
+    // localStorage on the next render, causing an infinite /library → /login loop.
+    supabase.auth.signOut();
     useAuthStore.setState({ user: null, session: null });
   }
 };
