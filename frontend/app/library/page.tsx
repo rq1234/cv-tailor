@@ -40,7 +40,7 @@ function groupEducation<T extends { id: string; institution?: string | null; deg
 }
 
 export default function LibraryPage() {
-  const { pool, poolLoading, fetchPool } = useExperiencePool();
+  const { pool, poolLoading, poolError, fetchPool } = useExperiencePool();
   const [reclassifying, setReclassifying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
@@ -86,6 +86,21 @@ export default function LibraryPage() {
     return (
       <div className="flex items-center justify-center py-20">
         <p className="text-muted-foreground">Loading experience pool...</p>
+      </div>
+    );
+  }
+
+  if (poolError) {
+    return (
+      <div className="flex flex-col items-center justify-center py-20 gap-3">
+        <p className="text-sm font-medium text-red-600">Could not connect to backend</p>
+        <p className="text-xs text-muted-foreground max-w-sm text-center">{poolError}</p>
+        <button
+          onClick={fetchPool}
+          className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
+        >
+          Retry
+        </button>
       </div>
     );
   }
