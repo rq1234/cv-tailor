@@ -298,20 +298,13 @@ async def get_tailor_result(
     edu_ids = cv_version.selected_education or []
     skill_ids = cv_version.selected_skills or []
 
-    # Fetch all metadata in parallel
-    (
-        experience_meta,
-        project_meta,
-        activity_meta,
-        education_data,
-        skills_data,
-    ) = await asyncio.gather(
-        _fetch_experience_meta(db, exp_ids, user_id),
-        _fetch_project_meta(db, proj_ids, user_id),
-        _fetch_activity_meta(db, act_ids, user_id),
-        _fetch_education_data(db, edu_ids, user_id),
-        _fetch_skills_data(db, skill_ids, user_id),
-    )
+    # SQLAlchemy AsyncSession does not allow concurrent operations on the same session;
+    # queries must run sequentially.
+    experience_meta = await _fetch_experience_meta(db, exp_ids, user_id)
+    project_meta = await _fetch_project_meta(db, proj_ids, user_id)
+    activity_meta = await _fetch_activity_meta(db, act_ids, user_id)
+    education_data = await _fetch_education_data(db, edu_ids, user_id)
+    skills_data = await _fetch_skills_data(db, skill_ids, user_id)
 
     return {
         "cv_version_id": str(cv_version.id),
