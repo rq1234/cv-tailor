@@ -41,6 +41,13 @@ async def app_error_handler(request: Request, exc: AppError):
     return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
+@app.exception_handler(Exception)
+async def unhandled_exception_handler(request: Request, exc: Exception):
+    """Catch-all handler so 500 responses still pass through CORSMiddleware."""
+    logger.exception("Unhandled exception on %s %s", request.method, request.url.path)
+    return JSONResponse(status_code=500, content={"detail": "Internal server error"})
+
+
 class SecurityHeadersMiddleware:
     """Add security headers to all responses (pure ASGI — compatible with CORSMiddleware)."""
 
