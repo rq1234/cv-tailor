@@ -49,7 +49,6 @@ export default function ApplyPage() {
     abortRef.current = controller;
 
     try {
-      const authHeaders = await (api as any)._getAuthHeaders?.() ?? {};
       const response = await api.stream("/api/tailor/run", {
         application_id: applicationId,
       });
