@@ -1,5 +1,6 @@
 import { useCallback, useRef, useState } from "react";
 import { api } from "@/lib/api";
+import { JD_MAX_CHARS } from "@/lib/schemas";
 
 type JdSource = "paste" | "screenshot" | "url";
 
@@ -73,12 +74,32 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext }: JdInp
       </div>
 
       {jdSource === "paste" && (
-        <textarea
-          value={jdText}
-          onChange={(e) => setJdText(e.target.value)}
-          className="w-full rounded-md border px-3 py-2 text-sm min-h-[300px]"
-          placeholder="Paste the full job description here..."
-        />
+        <div className="space-y-1">
+          <textarea
+            value={jdText}
+            onChange={(e) => setJdText(e.target.value)}
+            className={`w-full rounded-md border px-3 py-2 text-sm min-h-[300px] ${
+              jdText.length > JD_MAX_CHARS ? "border-red-400" : ""
+            }`}
+            placeholder="Paste the full job description here..."
+          />
+          <div className="flex justify-end">
+            <span
+              className={`text-xs ${
+                jdText.length > JD_MAX_CHARS
+                  ? "text-red-600 font-medium"
+                  : "text-muted-foreground"
+              }`}
+            >
+              {jdText.length.toLocaleString()} / {JD_MAX_CHARS.toLocaleString()}
+            </span>
+          </div>
+          {jdText.length > JD_MAX_CHARS && (
+            <p className="text-xs text-red-600">
+              Job description is too long. Please shorten it to under {JD_MAX_CHARS.toLocaleString()} characters.
+            </p>
+          )}
+        </div>
       )}
 
       {jdSource === "screenshot" && (
@@ -168,7 +189,7 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext }: JdInp
         </button>
         <button
           onClick={onNext}
-          disabled={!jdText.trim()}
+          disabled={!jdText.trim() || jdText.length > JD_MAX_CHARS}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
           Next

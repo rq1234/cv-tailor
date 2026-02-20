@@ -9,6 +9,7 @@ from sqlalchemy import (
     DateTime,
     Float,
     ForeignKey,
+    Index,
     Text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -86,6 +87,10 @@ class WorkExperience(Base):
     review_reason: Mapped[str | None] = mapped_column(Text)
     user_corrections: Mapped[dict | None] = mapped_column(JSONB)
 
+    __table_args__ = (
+        Index("ix_work_experiences_variant_group_id", "variant_group_id"),
+    )
+
 
 class Education(Base):
     __tablename__ = "education"
@@ -130,6 +135,10 @@ class Project(Base):
     variant_group_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True))
     is_primary_variant: Mapped[bool] = mapped_column(Boolean, default=True)
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    __table_args__ = (
+        Index("ix_projects_variant_group_id", "variant_group_id"),
+    )
 
 
 class Skill(Base):
@@ -182,6 +191,10 @@ class Activity(Base):
     needs_review: Mapped[bool] = mapped_column(Boolean, default=False)
     review_reason: Mapped[str | None] = mapped_column(Text)
     user_corrections: Mapped[dict | None] = mapped_column(JSONB)
+
+    __table_args__ = (
+        Index("ix_activities_variant_group_id", "variant_group_id"),
+    )
 
 
 class UnclassifiedBlock(Base):

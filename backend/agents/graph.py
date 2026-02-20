@@ -14,6 +14,7 @@ from backend.agents.cv_tailor import TailoredActivity, TailoredExperience, Tailo
 from backend.agents.draft_selector import SelectionResult, select_experiences
 from backend.agents.gap_analyzer import GapAnalysis, analyze_gaps
 from backend.agents.jd_parser import ParsedJD, parse_jd
+from backend.api.db_helpers import fetch_active_rules_text
 from backend.models.tables import (
     Activity,
     Application,
@@ -22,7 +23,6 @@ from backend.models.tables import (
     Education,
     Project,
     Skill,
-    TailoringRule,
     WorkExperience,
 )
 
@@ -43,22 +43,6 @@ class PipelineState(BaseModel):
     cv_version_id: str = ""
     current_step: str = "pending"
     error: str | None = None
-
-
-async def _fetch_rules_text(db: AsyncSession, user_id: uuid.UUID) -> str:
-    """Fetch active tailoring rules and format as text."""
-    rules_result = await db.execute(
-        select(TailoringRule).where(
-            TailoringRule.is_active.is_(True),
-            TailoringRule.user_id == user_id,
-        )
-    )
-    rules = rules_result.scalars().all()
-    if not rules:
-        return ""
-    return "Additional tailoring rules to apply:\n" + "\n".join(
-        f"- {r.rule_text}" for r in rules
-    )
 
 
 def _orm_to_dict(obj, fields: list[str]) -> dict:
@@ -185,7 +169,7 @@ async def tailor_cv_node(state: PipelineState, db: AsyncSession) -> PipelineStat
             _orm_to_dict(e, ["company", "role_title", "bullets"])
             for e in result.scalars().all()
         ]
-        rules_text = await _fetch_rules_text(db, user_uuid)
+        rules_text = await fetch_active_rules_text(db, user_uuid)
 
         tailored = await tailor_experiences(
             exp_dicts, state.jd_parsed, state.gap_analysis, rules_text
@@ -203,7 +187,7 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
         return state
     try:
         user_uuid = uuid.UUID(state.user_id)
-        rules_text = await _fetch_rules_text(db, user_uuid)
+        rules_text = await fetch_active_rules_text(db, user_uuid)
 
         selected_proj_ids = state.selection.get("selected_projects", [])
         if selected_proj_ids:

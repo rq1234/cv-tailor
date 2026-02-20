@@ -47,6 +47,12 @@ class Settings(BaseSettings):
     near_duplicate_threshold: float = 0.92
     variant_threshold: float = 0.75
 
+    # ── Confidence thresholds ──
+    confidence_review_threshold: float = 0.75  # below this → flag for user review
+
+    # ── Input size limits ──
+    jd_max_chars: int = 50_000  # max job description length (characters)
+
     # ── Draft selector ──
     domain_boost: float = 0.08
     max_experiences: int = 6

@@ -1,9 +1,10 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApplication } from "@/hooks/useApplication";
 import { api } from "@/lib/api";
+import { useAppStore } from "@/store/appStore";
 import JdInputStep from "@/components/apply/JdInputStep";
 import PipelineProgress from "@/components/apply/PipelineProgress";
 
@@ -15,9 +16,12 @@ interface PipelineStep {
   total: number;
 }
 
+const MAX_RETRIES = 3;
+
 export default function ApplyPage() {
   const router = useRouter();
   const { createApplication, loading } = useApplication();
+  const { setPipeline, setPipelineError, clearPipeline } = useAppStore();
 
   const [step, setStep] = useState(1);
   const [companyName, setCompanyName] = useState("");
@@ -25,7 +29,101 @@ export default function ApplyPage() {
   const [jdText, setJdText] = useState("");
   const [tailoring, setTailoring] = useState(false);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
-  const [pipelineError, setPipelineError] = useState<string | null>(null);
+  const [pipelineError, setPipelineErrorLocal] = useState<string | null>(null);
+
+  // Abort controller ref — cancelled on unmount to stop any in-flight stream
+  const abortRef = useRef<AbortController | null>(null);
+
+  useEffect(() => {
+    return () => {
+      abortRef.current?.abort();
+      clearPipeline();
+    };
+  }, [clearPipeline]);
+
+  const runStream = async (
+    applicationId: string,
+    retriesLeft: number,
+  ): Promise<void> => {
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    try {
+      const authHeaders = await (api as any)._getAuthHeaders?.() ?? {};
+      const response = await api.stream("/api/tailor/run", {
+        application_id: applicationId,
+      });
+
+      if (controller.signal.aborted) return;
+
+      const reader = response.body?.getReader();
+      const decoder = new TextDecoder();
+
+      if (!reader) throw new Error("No response stream");
+
+      let buffer = "";
+      while (true) {
+        if (controller.signal.aborted) {
+          reader.cancel();
+          return;
+        }
+
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("data: ")) {
+            try {
+              const data = JSON.parse(line.slice(6));
+              if (data.step) {
+                const stepData: PipelineStep = data;
+                setPipelineSteps((prev) => [...prev, stepData]);
+                setPipeline(stepData);
+              }
+              if (data.error) {
+                const errMsg = data.error as string;
+                setPipelineErrorLocal(errMsg);
+                setPipelineError(errMsg);
+                setTailoring(false);
+                return;
+              }
+              if (data.cv_version_id) {
+                clearPipeline();
+                setTailoring(false);
+                router.push(`/review/${applicationId}`);
+                return;
+              }
+            } catch {
+              // Skip malformed SSE lines
+            }
+          }
+        }
+      }
+    } catch (err) {
+      if (controller.signal.aborted) return;
+
+      // Retry on network errors with exponential backoff
+      if (retriesLeft > 0) {
+        const attempt = MAX_RETRIES - retriesLeft + 1;
+        const waitMs = 1_000 * 2 ** (attempt - 1);
+        setPipelineErrorLocal(`Connection lost — retrying in ${waitMs / 1000}s…`);
+        await new Promise((resolve) => setTimeout(resolve, waitMs));
+        if (!controller.signal.aborted) {
+          setPipelineErrorLocal(null);
+          return runStream(applicationId, retriesLeft - 1);
+        }
+      } else {
+        const errMsg = err instanceof Error ? err.message : "Tailoring failed";
+        setPipelineErrorLocal(errMsg);
+        setPipelineError(errMsg);
+        setTailoring(false);
+      }
+    }
+  };
 
   const handleSubmit = async () => {
     const app = await createApplication({
@@ -39,51 +137,10 @@ export default function ApplyPage() {
     setTailoring(true);
     setStep(4);
     setPipelineSteps([]);
-    setPipelineError(null);
+    setPipelineErrorLocal(null);
+    clearPipeline();
 
-    try {
-      const response = await api.stream("/api/tailor/run", { application_id: app.id });
-      const reader = response.body?.getReader();
-      const decoder = new TextDecoder();
-
-      if (!reader) throw new Error("No response stream");
-
-      let buffer = "";
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() || "";
-
-        for (const line of lines) {
-          if (line.startsWith("data: ")) {
-            try {
-              const data = JSON.parse(line.slice(6));
-              if (data.step) {
-                setPipelineSteps((prev) => [...prev, data]);
-              }
-              if (data.error) {
-                setPipelineError(data.error);
-                setTailoring(false);
-                return;
-              }
-              if (data.cv_version_id) {
-                setTailoring(false);
-                router.push(`/review/${app.id}`);
-                return;
-              }
-            } catch {
-              // Skip malformed lines
-            }
-          }
-        }
-      }
-    } catch (err) {
-      setPipelineError(err instanceof Error ? err.message : "Tailoring failed");
-      setTailoring(false);
-    }
+    await runStream(app.id, MAX_RETRIES);
   };
 
   return (
@@ -195,7 +252,8 @@ export default function ApplyPage() {
           error={pipelineError}
           onRetry={() => {
             setStep(3);
-            setPipelineError(null);
+            setPipelineErrorLocal(null);
+            clearPipeline();
           }}
         />
       )}

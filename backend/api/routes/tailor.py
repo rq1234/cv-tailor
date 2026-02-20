@@ -13,10 +13,13 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
+from backend.agents.cv_tailor import tailor_activities, tailor_experiences, tailor_projects
+from backend.agents.gap_analyzer import analyze_gaps
 from backend.agents.graph import run_pipeline
 from backend.api.auth import get_current_user
+from backend.api.db_helpers import fetch_active_rules_text
 from backend.models.database import get_db
-from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, TailoringRule, WorkExperience
+from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, WorkExperience
 from backend.schemas.pydantic import TailorRunRequest
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
@@ -114,6 +117,149 @@ async def run_tailoring(
     return EventSourceResponse(event_generator())
 
 
+# ── Private helpers for get_tailor_result ──────────────────────────────────
+
+async def _fetch_experience_meta(
+    db: AsyncSession,
+    exp_ids: list[str],
+    user_id: uuid.UUID,
+) -> dict[str, dict]:
+    if not exp_ids:
+        return {}
+    exp_uuids = [uuid.UUID(eid) for eid in exp_ids]
+    result = await db.execute(
+        select(WorkExperience).where(
+            WorkExperience.id.in_(exp_uuids),
+            WorkExperience.user_id == user_id,
+        )
+    )
+    return {
+        str(exp.id): {
+            "company": exp.company,
+            "role_title": exp.role_title,
+            "date_start": exp.date_start.isoformat() if exp.date_start else None,
+            "date_end": exp.date_end.isoformat() if exp.date_end else None,
+            "is_current": exp.is_current,
+        }
+        for exp in result.scalars()
+    }
+
+
+async def _fetch_project_meta(
+    db: AsyncSession,
+    proj_ids: list[str],
+    user_id: uuid.UUID,
+) -> dict[str, dict]:
+    if not proj_ids:
+        return {}
+    proj_uuids = [uuid.UUID(pid) for pid in proj_ids]
+    result = await db.execute(
+        select(Project).where(
+            Project.id.in_(proj_uuids),
+            Project.user_id == user_id,
+        )
+    )
+    return {
+        str(proj.id): {
+            "name": proj.name,
+            "description": proj.description,
+            "date_start": proj.date_start.isoformat() if proj.date_start else None,
+            "date_end": proj.date_end.isoformat() if proj.date_end else None,
+        }
+        for proj in result.scalars()
+    }
+
+
+async def _fetch_activity_meta(
+    db: AsyncSession,
+    act_ids: list[str],
+    user_id: uuid.UUID,
+) -> dict[str, dict]:
+    if not act_ids:
+        return {}
+    act_uuids = [uuid.UUID(aid) for aid in act_ids]
+    result = await db.execute(
+        select(Activity).where(
+            Activity.id.in_(act_uuids),
+            Activity.user_id == user_id,
+        )
+    )
+    return {
+        str(act.id): {
+            "organization": act.organization,
+            "role_title": act.role_title,
+            "date_start": act.date_start.isoformat() if act.date_start else None,
+            "date_end": act.date_end.isoformat() if act.date_end else None,
+            "is_current": act.is_current,
+        }
+        for act in result.scalars()
+    }
+
+
+async def _fetch_education_data(
+    db: AsyncSession,
+    edu_ids: list,
+    user_id: uuid.UUID,
+) -> list[dict]:
+    if not edu_ids:
+        return []
+    result = await db.execute(
+        select(Education).where(
+            Education.id.in_(edu_ids),
+            Education.user_id == user_id,
+        )
+    )
+    rows = []
+    for edu in result.scalars():
+        achievements = []
+        if isinstance(edu.achievements, list):
+            achievements = edu.achievements
+        elif isinstance(edu.achievements, dict):
+            achievements = edu.achievements.get("items", [])
+        modules = []
+        if isinstance(edu.modules, list):
+            modules = edu.modules
+        elif isinstance(edu.modules, dict):
+            modules = edu.modules.get("items", [])
+        rows.append({
+            "id": str(edu.id),
+            "institution": edu.institution,
+            "degree": edu.degree,
+            "grade": edu.grade,
+            "location": edu.location,
+            "date_start": edu.date_start.isoformat() if edu.date_start else None,
+            "date_end": edu.date_end.isoformat() if edu.date_end else None,
+            "achievements": achievements,
+            "modules": modules,
+        })
+    return rows
+
+
+async def _fetch_skills_data(
+    db: AsyncSession,
+    skill_ids: list,
+    user_id: uuid.UUID,
+) -> dict[str, list[str]]:
+    if not skill_ids:
+        return {}
+    result = await db.execute(
+        select(Skill).where(
+            Skill.id.in_(skill_ids),
+            Skill.user_id == user_id,
+        )
+    )
+    skills_by_id = {s.id: s for s in result.scalars()}
+    skills_data: dict[str, list[str]] = {}
+    for sid in skill_ids:
+        skill = skills_by_id.get(sid)
+        if not skill:
+            continue
+        cat = (skill.category or "Other").capitalize()
+        skills_data.setdefault(cat, []).append(skill.name)
+    return skills_data
+
+
+# ── Routes ─────────────────────────────────────────────────────────────────
 
 @router.get("/result/{application_id}")
 async def get_tailor_result(
@@ -144,120 +290,28 @@ async def get_tailor_result(
     )
     app = app_result.scalar_one()
 
-    # Separate experience and project IDs from diff_json
+    # Separate IDs by type from diff_json
     diff = cv_version.diff_json or {}
     exp_ids = [k for k, v in diff.items() if v.get("type", "experience") == "experience"]
     proj_ids = [k for k, v in diff.items() if v.get("type") == "project"]
     act_ids = [k for k, v in diff.items() if v.get("type") == "activity"]
-
-    # Fetch experience metadata
-    experience_meta = {}
-    if exp_ids:
-        exp_uuids = [uuid.UUID(eid) for eid in exp_ids]
-        exp_result = await db.execute(
-            select(WorkExperience).where(
-                WorkExperience.id.in_(exp_uuids),
-                WorkExperience.user_id == user_id,
-            )
-        )
-        for exp in exp_result.scalars():
-            experience_meta[str(exp.id)] = {
-                "company": exp.company,
-                "role_title": exp.role_title,
-                "date_start": exp.date_start.isoformat() if exp.date_start else None,
-                "date_end": exp.date_end.isoformat() if exp.date_end else None,
-                "is_current": exp.is_current,
-            }
-
-    # Fetch project metadata
-    project_meta = {}
-    if proj_ids:
-        proj_uuids = [uuid.UUID(pid) for pid in proj_ids]
-        proj_result = await db.execute(
-            select(Project).where(
-                Project.id.in_(proj_uuids),
-                Project.user_id == user_id,
-            )
-        )
-        for proj in proj_result.scalars():
-            project_meta[str(proj.id)] = {
-                "name": proj.name,
-                "description": proj.description,
-                "date_start": proj.date_start.isoformat() if proj.date_start else None,
-                "date_end": proj.date_end.isoformat() if proj.date_end else None,
-            }
-
-    # Fetch activity metadata
-    activity_meta = {}
-    if act_ids:
-        act_uuids = [uuid.UUID(aid) for aid in act_ids]
-        act_result = await db.execute(
-            select(Activity).where(
-                Activity.id.in_(act_uuids),
-                Activity.user_id == user_id,
-            )
-        )
-        for act in act_result.scalars():
-            activity_meta[str(act.id)] = {
-                "organization": act.organization,
-                "role_title": act.role_title,
-                "date_start": act.date_start.isoformat() if act.date_start else None,
-                "date_end": act.date_end.isoformat() if act.date_end else None,
-                "is_current": act.is_current,
-            }
-
-    # Fetch full education data
-    education_data = []
     edu_ids = cv_version.selected_education or []
-    if edu_ids:
-        edu_result = await db.execute(
-            select(Education).where(
-                Education.id.in_(edu_ids),
-                Education.user_id == user_id,
-            )
-        )
-        for edu in edu_result.scalars():
-            achievements = []
-            if isinstance(edu.achievements, list):
-                achievements = edu.achievements
-            elif isinstance(edu.achievements, dict):
-                achievements = edu.achievements.get("items", [])
-            modules = []
-            if isinstance(edu.modules, list):
-                modules = edu.modules
-            elif isinstance(edu.modules, dict):
-                modules = edu.modules.get("items", [])
-            education_data.append({
-                "id": str(edu.id),
-                "institution": edu.institution,
-                "degree": edu.degree,
-                "grade": edu.grade,
-                "location": edu.location,
-                "date_start": edu.date_start.isoformat() if edu.date_start else None,
-                "date_end": edu.date_end.isoformat() if edu.date_end else None,
-                "achievements": achievements,
-                "modules": modules,
-            })
-
-    # Fetch full skills data grouped by category
-    skills_data: dict[str, list[str]] = {}
     skill_ids = cv_version.selected_skills or []
-    if skill_ids:
-        skill_result = await db.execute(
-            select(Skill).where(
-                Skill.id.in_(skill_ids),
-                Skill.user_id == user_id,
-            )
-        )
-        skills_by_id = {s.id: s for s in skill_result.scalars()}
-        for sid in skill_ids:
-            skill = skills_by_id.get(sid)
-            if not skill:
-                continue
-            cat = (skill.category or "Other").capitalize()
-            if cat not in skills_data:
-                skills_data[cat] = []
-            skills_data[cat].append(skill.name)
+
+    # Fetch all metadata in parallel
+    (
+        experience_meta,
+        project_meta,
+        activity_meta,
+        education_data,
+        skills_data,
+    ) = await asyncio.gather(
+        _fetch_experience_meta(db, exp_ids, user_id),
+        _fetch_project_meta(db, proj_ids, user_id),
+        _fetch_activity_meta(db, act_ids, user_id),
+        _fetch_education_data(db, edu_ids, user_id),
+        _fetch_skills_data(db, skill_ids, user_id),
+    )
 
     return {
         "cv_version_id": str(cv_version.id),
@@ -299,30 +353,27 @@ async def accept_changes(
 
     accepted_changes = body.get("accepted_changes", {})
     rejected_changes = body.get("rejected_changes", {})
-    
+
     # Validate accepted_changes structure
     if not isinstance(accepted_changes, dict):
         raise HTTPException(status_code=400, detail="accepted_changes must be a dictionary")
-    
+
     if not isinstance(rejected_changes, dict):
         raise HTTPException(status_code=400, detail="rejected_changes must be a dictionary")
-    
+
     # Validate each entry in accepted_changes
     diff_json = cv_version.diff_json or {}
     for key, value in accepted_changes.items():
-        # Check if value is properly formatted
         if value is None:
             raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'] cannot be null")
-        
-        # For experience/project/activity bullets: should be list of strings
+
         if key in diff_json:
             if not isinstance(value, list):
                 raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'] must be a list of bullet strings")
             for i, bullet in enumerate(value):
                 if not isinstance(bullet, str):
                     raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] must be a string")
-        
-        # For education entries: should be list of strings (achievements + modules)
+
         elif key.startswith("education_"):
             if isinstance(value, dict):
                 achievements = value.get("achievements", [])
@@ -341,15 +392,14 @@ async def accept_changes(
                 for i, item in enumerate(value):
                     if not isinstance(item, str):
                         raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] must be a string")
-        
-        # For skills entries: should be list of strings (individual skills)
+
         elif key.startswith("skills_"):
             if not isinstance(value, list):
                 raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'] must be a list of skill strings")
             for i, skill in enumerate(value):
                 if not isinstance(skill, str):
                     raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] must be a string")
-    
+
     # Validate rejected_changes structure
     for key, indices in rejected_changes.items():
         if not isinstance(indices, list):
@@ -369,7 +419,6 @@ async def accept_changes(
         if accepted:
             final_cv[exp_id] = accepted
         else:
-            # Use original if not accepted
             final_cv[exp_id] = {"bullets": exp_diff.get("original_bullets", [])}
 
     cv_version.final_cv_json = final_cv
@@ -385,14 +434,10 @@ async def re_tailor_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Re-run tailoring for an existing application without changing selection.
-    
-    This applies the latest tailoring logic (including line optimization) to 
+
+    This applies the latest tailoring logic (including line optimization) to
     the existing selected experiences/projects/activities.
     """
-    from backend.agents.cv_tailor import tailor_experiences, tailor_projects, tailor_activities
-    from backend.agents.gap_analyzer import analyze_gaps
-    from backend.utils import extract_bullet_texts
-    
     # Get application
     app_result = await db.execute(
         select(Application).where(
@@ -403,10 +448,10 @@ async def re_tailor_application(
     app = app_result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
-    
+
     if not app.jd_parsed:
         raise HTTPException(status_code=400, detail="Application has no parsed JD")
-    
+
     # Get latest CV version
     cv_result = await db.execute(
         select(CvVersion)
@@ -420,21 +465,9 @@ async def re_tailor_application(
     cv_version = cv_result.scalar_one_or_none()
     if not cv_version:
         raise HTTPException(status_code=404, detail="No CV version found")
-    
-    # Fetch rules
-    rules_result = await db.execute(
-        select(TailoringRule).where(
-            TailoringRule.is_active.is_(True),
-            TailoringRule.user_id == user_id,
-        )
-    )
-    rules = rules_result.scalars().all()
-    rules_text = ""
-    if rules:
-        rules_text = "Additional tailoring rules to apply:\n" + "\n".join(
-            f"- {r.rule_text}" for r in rules
-        )
-    
+
+    rules_text = await fetch_active_rules_text(db, user_id)
+
     # Re-fetch selected experiences and re-tailor
     exp_ids = cv_version.selected_experiences or []
     if exp_ids:
@@ -454,18 +487,18 @@ async def re_tailor_application(
             }
             for e in experiences
         ]
-        
+
         # Re-run gap analysis
         gap_result = await analyze_gaps(exp_dicts, app.jd_parsed, None)
         gap_analysis = gap_result.model_dump()
-        
+
         # Re-tailor experiences
         tailored_exp = await tailor_experiences(
             exp_dicts, app.jd_parsed, gap_analysis, rules_text
         )
     else:
         tailored_exp = []
-    
+
     # Re-tailor projects
     proj_ids = cv_version.selected_projects or []
     if proj_ids:
@@ -488,7 +521,7 @@ async def re_tailor_application(
         tailored_proj = await tailor_projects(proj_dicts, app.jd_parsed, rules_text)
     else:
         tailored_proj = []
-    
+
     # Re-tailor activities
     act_ids = cv_version.selected_activities or []
     if act_ids:
@@ -511,7 +544,7 @@ async def re_tailor_application(
         tailored_act = await tailor_activities(act_dicts, app.jd_parsed, rules_text)
     else:
         tailored_act = []
-    
+
     # Build new diff_json
     diff_json = {}
     for te in tailored_exp:
@@ -526,7 +559,7 @@ async def re_tailor_application(
             "confidence": te.confidence,
             "requirements_addressed": te.requirements_addressed,
         }
-    
+
     for tp in tailored_proj:
         diff_json[tp.project_id] = {
             "type": "project",
@@ -539,7 +572,7 @@ async def re_tailor_application(
             "confidence": tp.confidence,
             "requirements_addressed": tp.requirements_addressed,
         }
-    
+
     for ta in tailored_act:
         diff_json[ta.activity_id] = {
             "type": "activity",
@@ -552,15 +585,11 @@ async def re_tailor_application(
             "confidence": ta.confidence,
             "requirements_addressed": ta.requirements_addressed,
         }
-    
-    # Update CV version with new diffs
+
+    # Update CV version — preserve user's accepted/rejected decisions
     cv_version.diff_json = diff_json
-    # PRESERVE user's accepted/rejected decisions - only update suggestions
-    # Do NOT reset accepted_changes and rejected_changes
-    # cv_version.accepted_changes and cv_version.rejected_changes stay as-is
-    
     await db.commit()
-    
+
     return {
         "status": "re-tailored",
         "cv_version_id": str(cv_version.id),

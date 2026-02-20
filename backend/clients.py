@@ -13,4 +13,4 @@ from backend.config import get_settings
 def get_openai_client() -> AsyncOpenAI:
     """Return a cached singleton AsyncOpenAI client."""
     settings = get_settings()
-    return AsyncOpenAI(api_key=settings.openai_api_key)
+    return AsyncOpenAI(api_key=settings.openai_api_key, timeout=60.0)

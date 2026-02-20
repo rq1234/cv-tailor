@@ -145,6 +145,14 @@ export const experiencePoolSchema = z.object({
   skills: z.array(skillSchema),
 });
 
+// ── Application input validation ────────────────────────────────────────
+/** Must match backend ApplicationCreate.jd_raw max_length. */
+export const JD_MAX_CHARS = 50_000;
+export const jdRawSchema = z
+  .string()
+  .min(1, "Job description is required")
+  .max(JD_MAX_CHARS, `Job description must be under ${JD_MAX_CHARS.toLocaleString()} characters`);
+
 // ── Applications ───────────────────────────────────────────────────────
 export const applicationSchema = z.object({
   id: z.string().uuid(),

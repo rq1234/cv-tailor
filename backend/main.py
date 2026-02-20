@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 from backend.api.routes import applications, auth, cv, experiences, export, rules, tailor  # noqa: E402
 from backend.config import get_settings
+from backend.exceptions import AppError
 
 settings = get_settings()
 logger.info("CORS origins: %s", settings.cors_origins)
@@ -33,6 +34,11 @@ async def rate_limit_handler(request: Request, exc: RateLimitExceeded):
         status_code=429,
         content={"detail": "Rate limit exceeded. Please try again later."},
     )
+
+
+@app.exception_handler(AppError)
+async def app_error_handler(request: Request, exc: AppError):
+    return JSONResponse(status_code=exc.status_code, content={"detail": exc.detail})
 
 
 class SecurityHeadersMiddleware:
@@ -67,7 +73,7 @@ app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=settings.cors_origins,
-    allow_origin_regex=r"https://cv-tailor[a-zA-Z0-9\-]*\.vercel\.app",
+    allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

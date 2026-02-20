@@ -26,6 +26,7 @@ from backend.schemas.pydantic import (
     ReviewItem,
     UnclassifiedBlockOut,
 )
+from backend.config import get_settings
 from backend.services.cv_structurer import structure_cv_text
 from backend.services.deduplicator import deduplicate_activity, deduplicate_experience, deduplicate_project
 from backend.services.embedder import embed_text
@@ -100,6 +101,8 @@ async def parse_and_store_cv(
     cleanly_parsed_count = 0
 
     # Store profile
+    _threshold = get_settings().confidence_review_threshold
+
     profile = CvProfile(
         user_id=user_id,
         full_name=parsed.profile.full_name,
@@ -114,7 +117,7 @@ async def parse_and_store_cv(
     )
     db.add(profile)
 
-    if parsed.profile.name_confidence < 0.75:
+    if parsed.profile.name_confidence < _threshold:
         review_items.append(ReviewItem(
             id=profile.id, table="cv_profiles", field="full_name",
             current_value=parsed.profile.full_name,
@@ -122,7 +125,7 @@ async def parse_and_store_cv(
             review_reason="Low confidence on name extraction",
         ))
 
-    if parsed.profile.contact_confidence < 0.75:
+    if parsed.profile.contact_confidence < _threshold:
         review_items.append(ReviewItem(
             id=profile.id, table="cv_profiles", field="email",
             current_value=parsed.profile.email,
@@ -134,10 +137,10 @@ async def parse_and_store_cv(
     for exp in parsed.work_experiences:
         needs_review = False
         reasons = []
-        if exp.company_confidence < 0.75:
+        if exp.company_confidence < _threshold:
             needs_review = True
             reasons.append(f"Low company confidence: {exp.company_confidence}")
-        if exp.dates_confidence < 0.75:
+        if exp.dates_confidence < _threshold:
             needs_review = True
             reasons.append(f"Low dates confidence: {exp.dates_confidence}")
 
@@ -192,7 +195,7 @@ async def parse_and_store_cv(
 
     # Store education
     for edu in parsed.education:
-        needs_review = edu.institution_confidence < 0.75 or edu.dates_confidence < 0.75
+        needs_review = edu.institution_confidence < _threshold or edu.dates_confidence < _threshold
         review_reason = None
         if needs_review:
             parts = []
@@ -251,10 +254,10 @@ async def parse_and_store_cv(
     for act in parsed.activities:
         needs_review = False
         reasons = []
-        if act.company_confidence < 0.75:
+        if act.company_confidence < _threshold:
             needs_review = True
             reasons.append(f"Low organization confidence: {act.company_confidence}")
-        if act.dates_confidence < 0.75:
+        if act.dates_confidence < _threshold:
             needs_review = True
             reasons.append(f"Low dates confidence: {act.dates_confidence}")
 
