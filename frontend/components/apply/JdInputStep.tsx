@@ -9,9 +9,11 @@ interface JdInputStepProps {
   setJdText: (text: string) => void;
   onBack: () => void;
   onNext: () => void;
+  nextLabel?: string;
+  nextLoading?: boolean;
 }
 
-export default function JdInputStep({ jdText, setJdText, onBack, onNext }: JdInputStepProps) {
+export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLabel = "Next", nextLoading = false }: JdInputStepProps) {
   const [jdSource, setJdSource] = useState<JdSource>("paste");
   const [screenshotPreview, setScreenshotPreview] = useState<string | null>(null);
   const [screenshotExtracting, setScreenshotExtracting] = useState(false);
@@ -189,10 +191,10 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext }: JdInp
         </button>
         <button
           onClick={onNext}
-          disabled={!jdText.trim() || jdText.length > JD_MAX_CHARS}
+          disabled={!jdText.trim() || jdText.length > JD_MAX_CHARS || nextLoading}
           className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
         >
-          Next
+          {nextLoading ? "Starting..." : nextLabel}
         </button>
       </div>
     </div>

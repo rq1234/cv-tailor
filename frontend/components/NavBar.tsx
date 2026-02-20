@@ -7,6 +7,7 @@ import UserMenu from "@/components/UserMenu";
 
 const navItems = [
   { href: "/apply", label: "New Application" },
+  { href: "/applications", label: "Applications" },
   { href: "/library", label: "Library" },
   { href: "/upload", label: "Add / Update CV" },
   { href: "/settings", label: "Settings" },

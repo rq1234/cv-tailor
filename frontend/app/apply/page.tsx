@@ -134,7 +134,7 @@ export default function ApplyPage() {
     if (!app) return;
 
     setTailoring(true);
-    setStep(4);
+    setStep(3);
     setPipelineSteps([]);
     setPipelineErrorLocal(null);
     clearPipeline();
@@ -148,7 +148,7 @@ export default function ApplyPage() {
 
       {/* Step indicators */}
       <div className="flex gap-2">
-        {[1, 2, 3, 4].map((s) => (
+        {[1, 2, 3].map((s) => (
           <div
             key={s}
             className={`h-2 flex-1 rounded-full ${s <= step ? "bg-primary" : "bg-muted"}`}
@@ -190,67 +190,25 @@ export default function ApplyPage() {
         </div>
       )}
 
-      {/* Step 2: JD Input */}
+      {/* Step 2: JD Input — Next directly starts tailoring */}
       {step === 2 && (
         <JdInputStep
           jdText={jdText}
           setJdText={setJdText}
           onBack={() => setStep(1)}
-          onNext={() => setStep(3)}
+          onNext={() => { handleSubmit(); }}
+          nextLabel={loading ? "Creating..." : "Tailor My CV"}
+          nextLoading={loading || tailoring}
         />
       )}
 
-      {/* Step 3: Confirm & Run */}
+      {/* Step 3: Pipeline Progress */}
       {step === 3 && (
-        <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Review & Tailor</h2>
-          <div className="rounded-lg border p-4 space-y-2">
-            <p className="text-sm">
-              <span className="font-medium">Company:</span> {companyName}
-            </p>
-            {roleTitle && (
-              <p className="text-sm">
-                <span className="font-medium">Role:</span> {roleTitle}
-              </p>
-            )}
-            <p className="text-sm">
-              <span className="font-medium">JD:</span> {jdText.slice(0, 200)}...
-            </p>
-          </div>
-
-          <div className="flex items-center gap-3 rounded-md border p-3 opacity-50">
-            <input type="checkbox" disabled className="h-4 w-4" />
-            <div>
-              <p className="text-sm font-medium">Generate company report</p>
-              <p className="text-xs text-muted-foreground">Glassdoor + news research &mdash; Coming soon</p>
-            </div>
-          </div>
-
-          <div className="flex gap-3">
-            <button
-              onClick={() => setStep(2)}
-              className="rounded-md border px-4 py-2 text-sm font-medium hover:bg-muted"
-            >
-              Back
-            </button>
-            <button
-              onClick={handleSubmit}
-              disabled={loading || tailoring}
-              className="flex-1 rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-            >
-              {loading ? "Creating application..." : "Start Tailoring"}
-            </button>
-          </div>
-        </div>
-      )}
-
-      {/* Step 4: Pipeline Progress */}
-      {step === 4 && (
         <PipelineProgress
           steps={pipelineSteps}
           error={pipelineError}
           onRetry={() => {
-            setStep(3);
+            setStep(2);
             setPipelineErrorLocal(null);
             clearPipeline();
           }}
