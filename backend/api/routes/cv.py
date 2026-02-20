@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import asyncio
 import logging
 import uuid
 
@@ -90,39 +89,31 @@ async def get_experience_pool(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Get the full experience pool — all work experiences, education, projects, skills."""
-    # Run all queries concurrently to eliminate N+1 latency
-    (
-        profile_row,
-        work_rows,
-        edu_rows,
-        proj_rows,
-        act_rows,
-        skill_rows,
-    ) = await asyncio.gather(
-        fetch_latest_profile(db, user_id),
-        db.execute(
-            select(WorkExperience)
-            .where(WorkExperience.user_id == user_id)
-            .order_by(WorkExperience.date_start.desc().nullslast())
-        ),
-        db.execute(
-            select(Education)
-            .where(Education.user_id == user_id)
-            .order_by(Education.date_end.desc().nullslast())
-        ),
-        db.execute(
-            select(Project)
-            .where(Project.user_id == user_id)
-            .order_by(Project.date_end.desc().nullslast())
-        ),
-        db.execute(
-            select(Activity)
-            .where(Activity.user_id == user_id)
-            .order_by(Activity.date_start.desc().nullslast())
-        ),
-        db.execute(
-            select(Skill).where(Skill.is_duplicate_of.is_(None), Skill.user_id == user_id)
-        ),
+    # SQLAlchemy AsyncSession does not allow concurrent operations on the same session;
+    # queries must run sequentially.
+    profile_row = await fetch_latest_profile(db, user_id)
+    work_rows = await db.execute(
+        select(WorkExperience)
+        .where(WorkExperience.user_id == user_id)
+        .order_by(WorkExperience.date_start.desc().nullslast())
+    )
+    edu_rows = await db.execute(
+        select(Education)
+        .where(Education.user_id == user_id)
+        .order_by(Education.date_end.desc().nullslast())
+    )
+    proj_rows = await db.execute(
+        select(Project)
+        .where(Project.user_id == user_id)
+        .order_by(Project.date_end.desc().nullslast())
+    )
+    act_rows = await db.execute(
+        select(Activity)
+        .where(Activity.user_id == user_id)
+        .order_by(Activity.date_start.desc().nullslast())
+    )
+    skill_rows = await db.execute(
+        select(Skill).where(Skill.is_duplicate_of.is_(None), Skill.user_id == user_id)
     )
 
     profile_out = CvProfileOut.model_validate(profile_row) if profile_row else None
