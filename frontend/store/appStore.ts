@@ -1,6 +1,14 @@
 import { create } from "zustand";
 import type { ExperiencePool, ParseSummary } from "@/lib/schemas";
 
+interface PipelineStep {
+  step: string;
+  status: "running" | "done" | "error";
+  label: string;
+  progress: number;
+  total: number;
+}
+
 interface AppState {
   // Experience pool
   pool: ExperiencePool | null;
@@ -17,6 +25,13 @@ interface AppState {
   // Active application
   activeApplicationId: string | null;
   setActiveApplicationId: (id: string | null) => void;
+
+  // Tailoring pipeline progress
+  pipeline: PipelineStep | null;
+  pipelineError: string | null;
+  setPipeline: (step: PipelineStep | null) => void;
+  setPipelineError: (error: string | null) => void;
+  clearPipeline: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -32,4 +47,10 @@ export const useAppStore = create<AppState>((set) => ({
 
   activeApplicationId: null,
   setActiveApplicationId: (activeApplicationId) => set({ activeApplicationId }),
+
+  pipeline: null,
+  pipelineError: null,
+  setPipeline: (pipeline) => set({ pipeline }),
+  setPipelineError: (pipelineError) => set({ pipelineError }),
+  clearPipeline: () => set({ pipeline: null, pipelineError: null }),
 }));

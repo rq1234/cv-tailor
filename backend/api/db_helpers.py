@@ -5,11 +5,11 @@ from __future__ import annotations
 import uuid
 from typing import Any, Type, TypeVar
 
-from fastapi import HTTPException
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from backend.models.tables import CvProfile
+from backend.exceptions import NotFoundError
+from backend.models.tables import CvProfile, TailoringRule
 
 T = TypeVar("T")
 
@@ -21,7 +21,7 @@ async def get_or_404(
     user_id: uuid.UUID,
     detail: str = "Not found",
 ) -> T:
-    """Fetch a single row scoped to user_id, or raise HTTP 404."""
+    """Fetch a single row scoped to user_id, or raise NotFoundError (HTTP 404)."""
     result = await db.execute(
         select(model).where(
             model.id == obj_id,  # type: ignore[attr-defined]
@@ -30,7 +30,7 @@ async def get_or_404(
     )
     obj = result.scalar_one_or_none()
     if not obj:
-        raise HTTPException(status_code=404, detail=detail)
+        raise NotFoundError(detail)
     return obj  # type: ignore[return-value]
 
 
@@ -41,7 +41,7 @@ async def delete_or_404(
     user_id: uuid.UUID,
     detail: str = "Not found",
 ) -> dict:
-    """Fetch and delete a row scoped to user_id, or raise HTTP 404."""
+    """Fetch and delete a row scoped to user_id, or raise NotFoundError (HTTP 404)."""
     obj = await get_or_404(db, model, obj_id, user_id, detail)
     await db.delete(obj)
     await db.commit()
@@ -66,3 +66,26 @@ async def fetch_latest_profile(
         .limit(1)
     )
     return result.scalar_one_or_none()
+
+
+async def fetch_active_rules_text(
+    db: AsyncSession,
+    user_id: uuid.UUID,
+) -> str:
+    """Return active tailoring rules formatted as a single string.
+
+    Shared between the pipeline graph and the re-tailor route to avoid duplication.
+    Returns an empty string when no rules are active.
+    """
+    result = await db.execute(
+        select(TailoringRule).where(
+            TailoringRule.is_active.is_(True),
+            TailoringRule.user_id == user_id,
+        )
+    )
+    rules = result.scalars().all()
+    if not rules:
+        return ""
+    return "Additional tailoring rules to apply:\n" + "\n".join(
+        f"- {r.rule_text}" for r in rules
+    )

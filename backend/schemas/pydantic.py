@@ -182,9 +182,9 @@ class CvProfileOut(BaseModel):
 
 # ── Applications ───────────────────────────────────────────────────────
 class ApplicationCreate(BaseModel):
-    company_name: str
-    role_title: str | None = None
-    jd_raw: str
+    company_name: str = Field(max_length=200)
+    role_title: str | None = Field(None, max_length=200)
+    jd_raw: str = Field(..., min_length=1, max_length=50_000)
     jd_source: str = "paste"
 
 
