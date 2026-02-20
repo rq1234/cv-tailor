@@ -1,19 +1,35 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useAuthStore } from "@/store/authStore";
+import { api } from "@/lib/api";
 
 export default function LoginPage() {
   const router = useRouter();
   const { signIn, signUp, loading, error, signupEmail, clearSignupEmail, user, initializing } = useAuthStore();
 
+  const redirectAfterAuth = useCallback(async () => {
+    try {
+      const pool = await api.get<{ work_experiences: unknown[]; education: unknown[]; projects: unknown[]; activities: unknown[]; skills: unknown[] }>("/api/cv/pool");
+      const hasContent =
+        pool.work_experiences.length > 0 ||
+        pool.education.length > 0 ||
+        pool.projects.length > 0 ||
+        pool.activities.length > 0 ||
+        pool.skills.length > 0;
+      router.replace(hasContent ? "/library" : "/upload");
+    } catch {
+      router.replace("/library");
+    }
+  }, [router]);
+
   // If already authenticated (and not waiting for email confirmation), redirect away
   useEffect(() => {
     if (!initializing && user && !signupEmail) {
-      router.replace("/library");
+      redirectAfterAuth();
     }
-  }, [user, initializing, signupEmail, router]);
+  }, [user, initializing, signupEmail, redirectAfterAuth]);
   const [mode, setMode] = useState<"signin" | "signup">("signin");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -41,7 +57,7 @@ export default function LoginPage() {
     if (mode === "signin") {
       const success = await signIn(email, password);
       if (success) {
-        router.replace("/library");
+        await redirectAfterAuth();
       }
     } else {
       // Sign up - don't redirect, let confirmation screen show
