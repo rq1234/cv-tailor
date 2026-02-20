@@ -77,15 +77,6 @@ class SecurityHeadersMiddleware:
 
 
 app.add_middleware(SecurityHeadersMiddleware)
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=settings.cors_origins,
-    allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-    expose_headers=["Content-Disposition"],
-)
 
 app.include_router(cv.router)
 app.include_router(experiences.router)
@@ -104,3 +95,17 @@ async def root():
 @app.get("/health")
 async def health():
     return {"status": "ok"}
+
+
+# Wrap the entire FastAPI app (including its ServerErrorMiddleware) with CORSMiddleware so
+# that Access-Control-Allow-Origin is present on ALL responses — including unhandled 500s.
+# app.add_middleware() cannot achieve this because it sits *inside* ServerErrorMiddleware.
+application = CORSMiddleware(
+    app=app,
+    allow_origins=settings.cors_origins,
+    allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+    expose_headers=["Content-Disposition"],
+)
