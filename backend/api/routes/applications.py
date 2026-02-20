@@ -6,6 +6,7 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
@@ -19,6 +20,20 @@ router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+
+
+@router.get("", response_model=list[ApplicationOut])
+async def list_applications(
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """List all applications for the current user, newest first."""
+    result = await db.execute(
+        select(Application)
+        .where(Application.user_id == user_id)
+        .order_by(Application.created_at.desc())
+    )
+    return [ApplicationOut.model_validate(app) for app in result.scalars().all()]
 
 
 @router.post("", response_model=ApplicationOut)

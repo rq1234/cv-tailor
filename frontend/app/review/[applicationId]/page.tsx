@@ -124,6 +124,58 @@ export default function ReviewPage() {
     setManualEdits({});
   };
 
+  const acceptAll = () => {
+    setDecisions((prev) => {
+      const next: typeof prev = {};
+      for (const [expId, expDecs] of Object.entries(prev)) {
+        next[expId] = {};
+        for (const idx of Object.keys(expDecs)) {
+          next[expId][Number(idx)] = { decision: "accept" };
+        }
+      }
+      return next;
+    });
+  };
+
+  const rejectAll = () => {
+    setDecisions((prev) => {
+      const next: typeof prev = {};
+      for (const [expId, expDecs] of Object.entries(prev)) {
+        next[expId] = {};
+        for (const idx of Object.keys(expDecs)) {
+          next[expId][Number(idx)] = { decision: "reject" };
+        }
+      }
+      return next;
+    });
+  };
+
+  const handleDownloadLatex = async () => {
+    if (!result) return;
+    setSaving(true);
+    try {
+      const changes = buildChanges();
+      if (changes) {
+        await api.put(`/api/tailor/cv-versions/${result.cv_version_id}/accept-changes`, {
+          accepted_changes: changes.acceptedChanges,
+          rejected_changes: changes.rejectedChanges,
+        });
+      }
+      const { blob, filename } = await api.downloadFile(`/api/export/latex/${result.cv_version_id}`);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = filename || "cv.tex";
+      a.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Download failed:", err);
+      alert("Failed to download LaTeX file.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
   // Count summary
   const counts = { accepted: 0, rejected: 0, edited: 0, total: 0 };
   for (const expDecisions of Object.values(decisions)) {
@@ -355,6 +407,20 @@ export default function ReviewPage() {
             </div>
           )}
           <button
+            onClick={acceptAll}
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            title="Accept all suggestions"
+          >
+            Accept All
+          </button>
+          <button
+            onClick={rejectAll}
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50"
+            title="Reject all suggestions"
+          >
+            Reject All
+          </button>
+          <button
             onClick={handleReTailor}
             disabled={retailoring}
             className="rounded-md border border-gray-300 bg-white px-4 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
@@ -375,6 +441,14 @@ export default function ReviewPage() {
             title="Reset all accept/reject/edit decisions"
           >
             Reset Decisions
+          </button>
+          <button
+            onClick={handleDownloadLatex}
+            disabled={saving}
+            className="rounded-md border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 disabled:opacity-50"
+            title="Save decisions and download .tex file"
+          >
+            {saving ? "..." : "Download .tex"}
           </button>
           <button
             onClick={handleOpenOverleaf}

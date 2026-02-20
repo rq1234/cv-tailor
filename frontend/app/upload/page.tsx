@@ -7,6 +7,15 @@ import { api } from "@/lib/api";
 import { parseSummarySchema, type ParseSummary, type ReviewItem, type UnclassifiedBlock } from "@/lib/schemas";
 import { useAppStore } from "@/store/appStore";
 
+const CATEGORY_TO_API: Record<string, string> = {
+  "Work Experience": "work_experience",
+  "Education": "education",
+  "Project": "project",
+  "Activity": "activity",
+  "Skill": "skill",
+  "Ignore": "ignore",
+};
+
 export default function UploadPage() {
   const router = useRouter();
   const { setUploadResult } = useAppStore();
@@ -53,7 +62,35 @@ export default function UploadPage() {
       result.unclassified_blocks.every((b: UnclassifiedBlock) => resolvedBlocks[b.id]));
 
   const handleSaveToLibrary = async () => {
-    // TODO: Send corrections to API
+    setError(null);
+    try {
+      // Resolve unclassified blocks
+      await Promise.all(
+        Object.entries(resolvedBlocks).map(([blockId, category]) => {
+          const resolved_as = CATEGORY_TO_API[category] ?? "ignore";
+          return api.post(`/api/experiences/${blockId}/resolve-unclassified?resolved_as=${resolved_as}`, {});
+        })
+      );
+
+      // Send corrections for needs_review items (best-effort; silently skip unsupported tables)
+      await Promise.all(
+        result!.needs_review
+          .filter((item: ReviewItem) => reviewEdits[item.id] !== undefined)
+          .map((item: ReviewItem) => {
+            const body = { [item.field]: reviewEdits[item.id] };
+            if (item.table === "work_experiences") {
+              return api.put(`/api/experiences/${item.id}`, body).catch(() => null);
+            }
+            if (item.table === "activities") {
+              return api.put(`/api/experiences/activities/${item.id}`, body).catch(() => null);
+            }
+            return Promise.resolve(null);
+          })
+      );
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to save corrections");
+      return;
+    }
     router.push("/apply");
   };
 

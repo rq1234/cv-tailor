@@ -44,6 +44,7 @@ export default function LibraryPage() {
   const [reclassifying, setReclassifying] = useState<string | null>(null);
   const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
+  const [opError, setOpError] = useState<string | null>(null);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups((prev) => {
@@ -56,11 +57,12 @@ export default function LibraryPage() {
 
   const handleMoveToActivities = async (expId: string) => {
     setReclassifying(expId);
+    setOpError(null);
     try {
       await api.post("/api/experiences/reclassify", { experience_ids: [expId] });
       await fetchPool();
-    } catch {
-      // silently fail
+    } catch (err) {
+      setOpError(err instanceof Error ? err.message : "Failed to move to activities");
     } finally {
       setReclassifying(null);
     }
@@ -68,11 +70,12 @@ export default function LibraryPage() {
 
   const handleDelete = async (endpoint: string, id: string) => {
     setDeleting(id);
+    setOpError(null);
     try {
       await api.delete(`${endpoint}/${id}`);
       await fetchPool();
-    } catch {
-      // silently fail
+    } catch (err) {
+      setOpError(err instanceof Error ? err.message : "Failed to delete item");
     } finally {
       setDeleting(null);
     }
@@ -128,9 +131,16 @@ export default function LibraryPage() {
           href="/upload"
           className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
         >
-          Upload CV
+          Add / Update CV
         </Link>
       </div>
+
+      {opError && (
+        <div className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+          <span>{opError}</span>
+          <button onClick={() => setOpError(null)} className="ml-2 text-red-400 hover:text-red-600">✕</button>
+        </div>
+      )}
 
       {!hasContent ? (
         <div className="flex flex-col items-center justify-center rounded-lg border border-dashed p-12">
