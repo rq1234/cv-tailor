@@ -54,12 +54,33 @@ export default function UploadPage() {
 
   const handleSaveToLibrary = async () => {
     // TODO: Send corrections to API
-    router.push("/library");
+    router.push("/apply");
   };
 
   return (
     <div className="space-y-6">
       <h1 className="text-2xl font-bold">Upload CV</h1>
+
+      {/* Onboarding steps — shown before any upload */}
+      {!result && !uploading && (
+        <div className="grid gap-3 sm:grid-cols-3">
+          {[
+            { n: "1", title: "Upload your CV", body: "Drop your PDF here. We extract every role, project, skill, and degree." },
+            { n: "2", title: "Paste a job description", body: "On the next screen, enter the company and role. AI picks your best matching experience." },
+            { n: "3", title: "Export to Overleaf", body: "Accept or edit suggestions, then send the final LaTeX straight to Overleaf." },
+          ].map((s) => (
+            <div key={s.n} className="flex gap-3 rounded-lg border bg-white p-4 shadow-sm">
+              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
+                {s.n}
+              </div>
+              <div>
+                <p className="text-sm font-medium">{s.title}</p>
+                <p className="mt-0.5 text-xs text-muted-foreground">{s.body}</p>
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
 
       {!result && !uploading && (
         <CVDropzone onFileSelected={handleFileSelected} />
@@ -179,7 +200,7 @@ export default function UploadPage() {
             disabled={!canSave}
             className="w-full rounded-md bg-primary px-4 py-3 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50 disabled:cursor-not-allowed"
           >
-            Save to Library
+            Save & Start New Application
           </button>
         </div>
       )}
