@@ -235,16 +235,7 @@ export default function ReviewPage() {
         });
       }
 
-      const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
-      const response = await fetch(`${API_URL}/api/export/overleaf/${result.cv_version_id}`, {
-        method: "POST",
-      });
-
-      if (!response.ok) {
-        throw new Error("Failed to generate Overleaf link");
-      }
-
-      const data = await response.json();
+      const data = await api.post<{ success: boolean; latex_content: string }>(`/api/export/overleaf/${result.cv_version_id}`);
       if (data.latex_content) {
         // Use a hidden POST form to send LaTeX to Overleaf (avoids URL length limits)
         const form = document.createElement("form");
@@ -254,10 +245,8 @@ export default function ReviewPage() {
 
         const input = document.createElement("input");
         input.type = "hidden";
-        input.name = "snip_uri";
-        // Encode as a data URI so Overleaf can read it
-        const encoded = btoa(unescape(encodeURIComponent(data.latex_content)));
-        input.value = `data:application/x-tex;base64,${encoded}`;
+        input.name = "snip";
+        input.value = data.latex_content;
         form.appendChild(input);
 
         const nameInput = document.createElement("input");

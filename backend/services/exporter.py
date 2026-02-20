@@ -599,7 +599,7 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
             dates = _date_range(exp.get("date_start", ""), exp.get("date_end", ""))
             location_str = _escape_latex(exp.get("location", ""))
 
-            latex_lines.append(f"    \\resumeSubheading{{{role}}}{{{dates}}}{{{company}}}{{{location_str}}}")
+            latex_lines.append(f"    \\resumeSubheading{{{company}}}{{{dates}}}{{{role}}}{{{location_str}}}")
 
             if exp.get("bullets"):
                 latex_lines.append(r"      \resumeItemListStart")
