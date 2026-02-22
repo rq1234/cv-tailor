@@ -82,9 +82,12 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
 
 
 async def select_experiences_node(state: PipelineState, db: AsyncSession) -> PipelineState:
-    """Node 2: Select best experiences from the pool."""
+    """Node 2: Select best experiences from the pool (skipped if manual_selection was provided)."""
     state.current_step = "selecting_experiences"
     if state.error:
+        return state
+    # Skip AI selection if user manually pinned their experiences
+    if state.selection:
         return state
     try:
         user_uuid = uuid.UUID(state.user_id)
@@ -372,6 +375,7 @@ async def run_pipeline(
     db: AsyncSession,
     user_id: uuid.UUID,
     on_step: Any | None = None,
+    manual_selection: dict | None = None,
 ) -> PipelineState:
     """Run the full tailoring pipeline.
 
@@ -380,8 +384,14 @@ async def run_pipeline(
         jd_raw: Raw job description text
         db: Database session
         on_step: Optional async callback called with step name for SSE streaming
+        manual_selection: If provided, skip AI experience selection and use these IDs instead.
+            Expected keys: selected_experiences (list of {"id": str}), selected_projects,
+            selected_activities, selected_education, selected_skills (lists of UUID strings).
     """
     state = PipelineState(application_id=application_id, jd_raw=jd_raw, user_id=str(user_id))
+
+    if manual_selection is not None:
+        state.selection = manual_selection
 
     steps = [
         ("parsing_jd", parse_jd_node),

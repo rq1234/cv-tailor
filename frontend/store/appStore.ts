@@ -32,6 +32,9 @@ interface AppState {
   setPipeline: (step: PipelineStep | null) => void;
   setPipelineError: (error: string | null) => void;
   clearPipeline: () => void;
+
+  /** Reset all user-scoped state on sign-out so another user can't see stale data. */
+  resetForSignOut: () => void;
 }
 
 export const useAppStore = create<AppState>((set) => ({
@@ -53,4 +56,13 @@ export const useAppStore = create<AppState>((set) => ({
   setPipeline: (pipeline) => set({ pipeline }),
   setPipelineError: (pipelineError) => set({ pipelineError }),
   clearPipeline: () => set({ pipeline: null, pipelineError: null }),
+  resetForSignOut: () => set({
+    pool: null,
+    poolLoading: false,
+    uploadResult: null,
+    uploadLoading: false,
+    activeApplicationId: null,
+    pipeline: null,
+    pipelineError: null,
+  }),
 }));

@@ -1,0 +1,22 @@
+# Python
+backend/.venv
+backend/__pycache__
+backend/**/__pycache__
+backend/**/*.pyc
+backend/tests
+
+# Frontend (not part of backend image)
+frontend/
+frontend/node_modules/
+frontend/.next/
+
+# Git / editor
+.git
+.gitignore
+.claude
+*.md
+plan/
+
+# Env files (inject via EC2 environment variables or Secrets Manager)
+.env
+.env.*

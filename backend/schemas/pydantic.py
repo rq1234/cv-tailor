@@ -208,6 +208,11 @@ class ApplicationOut(BaseModel):
 # ── Tailoring ──────────────────────────────────────────────────────────
 class TailorRunRequest(BaseModel):
     application_id: uuid.UUID
+    pinned_experiences: list[uuid.UUID] | None = None
+    pinned_projects: list[uuid.UUID] | None = None
+    pinned_activities: list[uuid.UUID] | None = None
+    pinned_education: list[uuid.UUID] | None = None
+    pinned_skills: list[uuid.UUID] | None = None
 
 
 class RegenerateBulletRequest(BaseModel):

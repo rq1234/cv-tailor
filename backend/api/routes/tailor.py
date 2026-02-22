@@ -84,10 +84,22 @@ async def run_tailoring(
             "saving": "Saving results...",
         }
 
+        # Build manual_selection dict if the user pinned specific IDs
+        manual_selection = None
+        if any([body.pinned_experiences, body.pinned_projects, body.pinned_activities,
+                body.pinned_education, body.pinned_skills]):
+            manual_selection = {
+                "selected_experiences": [{"id": str(uid)} for uid in (body.pinned_experiences or [])],
+                "selected_projects": [str(uid) for uid in (body.pinned_projects or [])],
+                "selected_activities": [str(uid) for uid in (body.pinned_activities or [])],
+                "selected_education": [str(uid) for uid in (body.pinned_education or [])],
+                "selected_skills": [str(uid) for uid in (body.pinned_skills or [])],
+            }
+
         _active_tailoring.add(user_key)
         pipeline_task = asyncio.create_task(
             asyncio.wait_for(
-                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step),
+                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step, manual_selection),
                 timeout=_PIPELINE_TIMEOUT_S,
             )
         )
@@ -388,6 +400,8 @@ async def accept_changes(
     if not isinstance(rejected_changes, dict):
         raise HTTPException(status_code=400, detail="rejected_changes must be a dictionary")
 
+    _MAX_BULLET_LEN = 600  # ~4 wrapped lines; anything longer would break LaTeX pagination
+
     # Validate each entry in accepted_changes
     diff_json = cv_version.diff_json or {}
     for key, value in accepted_changes.items():
@@ -400,6 +414,8 @@ async def accept_changes(
             for i, bullet in enumerate(value):
                 if not isinstance(bullet, str):
                     raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] must be a string")
+                if len(bullet) > _MAX_BULLET_LEN:
+                    raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] exceeds maximum length of {_MAX_BULLET_LEN} characters")
 
         elif key.startswith("education_"):
             if isinstance(value, dict):
@@ -410,15 +426,21 @@ async def accept_changes(
                 for i, item in enumerate(achievements):
                     if not isinstance(item, str):
                         raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'].achievements[{i}] must be a string")
+                    if len(item) > _MAX_BULLET_LEN:
+                        raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'].achievements[{i}] exceeds maximum length of {_MAX_BULLET_LEN} characters")
                 for i, item in enumerate(modules):
                     if not isinstance(item, str):
                         raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'].modules[{i}] must be a string")
+                    if len(item) > _MAX_BULLET_LEN:
+                        raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'].modules[{i}] exceeds maximum length of {_MAX_BULLET_LEN} characters")
             else:
                 if not isinstance(value, list):
                     raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'] must be a list")
                 for i, item in enumerate(value):
                     if not isinstance(item, str):
                         raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] must be a string")
+                    if len(item) > _MAX_BULLET_LEN:
+                        raise HTTPException(status_code=400, detail=f"accepted_changes['{key}'][{i}] exceeds maximum length of {_MAX_BULLET_LEN} characters")
 
         elif key.startswith("skills_"):
             if not isinstance(value, list):

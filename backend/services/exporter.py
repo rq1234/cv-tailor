@@ -297,12 +297,13 @@ async def _build_cv_context(
         for cat, items in list(skills_by_category.items()):
             skills_by_category[cat] = _dedupe_preserve_order(items)
 
+    limits = _compute_page_limits(bool(projects), bool(activities))
     return {
         "profile": profile,
-        "experiences": experiences,
+        "experiences": experiences[: limits["exp"]],
         "education": education,
-        "projects": projects,
-        "activities": activities,
+        "projects": projects[: limits["proj"]] if limits["proj"] else projects,
+        "activities": activities[: limits["act"]] if limits["act"] else activities,
         "skills_by_category": skills_by_category,
     }
 
@@ -391,6 +392,25 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
         seen.add(key)
         result.append(item)
     return result
+
+
+def _compute_page_limits(has_projects: bool, has_activities: bool) -> dict:
+    """Return per-section item caps so the CV fits one page regardless of content mix.
+
+    The Jake Gutierrez template at 11pt holds roughly:
+      - Full profile (exp + proj + act): 4 exp, 3 proj, 2 act
+      - IB/Finance (exp + act, no proj):  5 exp, 3 act
+      - Tech (exp + proj, no act):        4 exp, 4 proj
+      - Exp-only (no proj, no act):       6 exp
+    """
+    if has_projects and has_activities:
+        return {"exp": 4, "proj": 3, "act": 2}
+    if has_projects and not has_activities:
+        return {"exp": 4, "proj": 4, "act": 0}
+    if not has_projects and has_activities:
+        return {"exp": 5, "proj": 0, "act": 3}
+    # No projects, no activities
+    return {"exp": 6, "proj": 0, "act": 0}
 
 
 def _soft_trim_bullet(text: str, target_len: int = 95, max_len: int = 110) -> str:

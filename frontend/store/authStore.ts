@@ -3,6 +3,7 @@
 import { create } from "zustand";
 import type { Session, Subscription, User } from "@supabase/supabase-js";
 import { supabase } from "@/lib/supabase";
+import { useAppStore } from "@/store/appStore";
 
 // Module-level ref so initialize() can unsubscribe the previous listener
 // before registering a new one (guards against StrictMode double-invoke).
@@ -89,6 +90,11 @@ export const useAuthStore = create<AuthState>((set) => ({
       set({ loading: false, error: error.message });
       return;
     }
+    // Clear all user-scoped in-memory state so a subsequent login sees a clean slate
+    useAppStore.getState().resetForSignOut();
+    // Clear any persisted review edits from localStorage
+    const keysToRemove = Object.keys(localStorage).filter((k) => k.startsWith("cv-edits-"));
+    keysToRemove.forEach((k) => localStorage.removeItem(k));
     set({ loading: false, user: null, session: null });
   },
   changePassword: async (currentPassword: string, newPassword: string) => {

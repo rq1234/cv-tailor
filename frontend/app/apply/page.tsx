@@ -5,8 +5,10 @@ import { useRouter } from "next/navigation";
 import { useApplication } from "@/hooks/useApplication";
 import { api, ApiError } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
+import { useExperiencePool } from "@/hooks/useExperiencePool";
 import JdInputStep from "@/components/apply/JdInputStep";
 import PipelineProgress from "@/components/apply/PipelineProgress";
+import ExperienceSelectStep, { type PoolSelection } from "@/components/apply/ExperienceSelectStep";
 
 interface PipelineStep {
   step: string;
@@ -22,11 +24,13 @@ export default function ApplyPage() {
   const router = useRouter();
   const { createApplication, loading } = useApplication();
   const { setPipeline, setPipelineError, clearPipeline } = useAppStore();
+  const { pool, poolLoading, fetchPool } = useExperiencePool();
 
   const [step, setStep] = useState(1);
   const [companyName, setCompanyName] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
   const [jdText, setJdText] = useState("");
+  const [applicationId, setApplicationId] = useState<string | null>(null);
   const [tailoring, setTailoring] = useState(false);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [pipelineError, setPipelineErrorLocal] = useState<string | null>(null);
@@ -42,7 +46,8 @@ export default function ApplyPage() {
   }, [clearPipeline]);
 
   const runStream = async (
-    applicationId: string,
+    appId: string,
+    selection: PoolSelection,
     retriesLeft: number,
   ): Promise<void> => {
     // Abort any previous stream before starting a new one.
@@ -52,7 +57,12 @@ export default function ApplyPage() {
 
     try {
       const response = await api.stream("/api/tailor/run", {
-        application_id: applicationId,
+        application_id: appId,
+        pinned_experiences: selection.experience_ids,
+        pinned_projects: selection.project_ids,
+        pinned_activities: selection.activity_ids,
+        pinned_education: selection.education_ids,
+        pinned_skills: selection.skill_ids,
       });
 
       if (controller.signal.aborted) return;
@@ -95,7 +105,7 @@ export default function ApplyPage() {
               if (data.cv_version_id) {
                 clearPipeline();
                 setTailoring(false);
-                router.push(`/review/${applicationId}`);
+                router.push(`/review/${appId}`);
                 return;
               }
             } catch {
@@ -115,7 +125,7 @@ export default function ApplyPage() {
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         if (!controller.signal.aborted) {
           setPipelineErrorLocal(null);
-          return runStream(applicationId, retriesLeft - 1);
+          return runStream(appId, selection, retriesLeft - 1);
         }
       } else {
         // 409 means the backend already has a pipeline running for this user.
@@ -130,7 +140,8 @@ export default function ApplyPage() {
     }
   };
 
-  const handleSubmit = async () => {
+  // Step 2 → 3: create application and fetch pool for selection
+  const handleJdNext = async () => {
     const app = await createApplication({
       company_name: companyName,
       role_title: roleTitle || undefined,
@@ -139,13 +150,22 @@ export default function ApplyPage() {
     });
     if (!app) return;
 
-    setTailoring(true);
+    setApplicationId(app.id);
+    await fetchPool();
     setStep(3);
+  };
+
+  // Step 3 → 4: start pipeline with user's selection
+  const handleSelectionNext = async (selection: PoolSelection) => {
+    if (!applicationId) return;
+
+    setTailoring(true);
+    setStep(4);
     setPipelineSteps([]);
     setPipelineErrorLocal(null);
     clearPipeline();
 
-    await runStream(app.id, MAX_RETRIES);
+    await runStream(applicationId, selection, MAX_RETRIES);
   };
 
   return (
@@ -154,7 +174,7 @@ export default function ApplyPage() {
 
       {/* Step indicators */}
       <div className="flex gap-2">
-        {[1, 2, 3].map((s) => (
+        {[1, 2, 3, 4].map((s) => (
           <div
             key={s}
             className={`h-2 flex-1 rounded-full ${s <= step ? "bg-primary" : "bg-muted"}`}
@@ -196,25 +216,42 @@ export default function ApplyPage() {
         </div>
       )}
 
-      {/* Step 2: JD Input — Next directly starts tailoring */}
+      {/* Step 2: JD Input */}
       {step === 2 && (
         <JdInputStep
           jdText={jdText}
           setJdText={setJdText}
           onBack={() => setStep(1)}
-          onNext={() => { handleSubmit(); }}
-          nextLabel={loading ? "Creating..." : "Tailor My CV"}
-          nextLoading={loading || tailoring}
+          onNext={handleJdNext}
+          nextLabel={loading ? "Creating..." : "Next"}
+          nextLoading={loading}
         />
       )}
 
-      {/* Step 3: Pipeline Progress */}
+      {/* Step 3: Select Experiences */}
       {step === 3 && (
+        poolLoading || !pool ? (
+          <div className="flex flex-col items-center justify-center py-16 gap-3">
+            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm text-muted-foreground">Loading your experience pool...</p>
+          </div>
+        ) : (
+          <ExperienceSelectStep
+            pool={pool}
+            onBack={() => setStep(2)}
+            onNext={handleSelectionNext}
+            nextLoading={tailoring}
+          />
+        )
+      )}
+
+      {/* Step 4: Pipeline Progress */}
+      {step === 4 && (
         <PipelineProgress
           steps={pipelineSteps}
           error={pipelineError}
           onRetry={() => {
-            setStep(2);
+            setStep(3);
             setPipelineErrorLocal(null);
             clearPipeline();
           }}
