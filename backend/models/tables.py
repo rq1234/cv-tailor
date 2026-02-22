@@ -10,6 +10,7 @@ from sqlalchemy import (
     Float,
     ForeignKey,
     Index,
+    Integer,
     Text,
 )
 from sqlalchemy.dialects.postgresql import ARRAY, JSONB, UUID
@@ -223,6 +224,7 @@ class Application(Base):
     jd_parsed: Mapped[dict | None] = mapped_column(JSONB)
     jd_source: Mapped[str | None] = mapped_column(Text)
     status: Mapped[str] = mapped_column(Text, default="draft")
+    outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     include_report: Mapped[bool] = mapped_column(Boolean, default=False)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
@@ -231,6 +233,10 @@ class Application(Base):
         CheckConstraint(
             "status IN ('draft', 'tailoring', 'review', 'complete')",
             name="ck_applications_status",
+        ),
+        CheckConstraint(
+            "outcome IS NULL OR outcome IN ('applied', 'interview', 'offer', 'rejected', 'withdrawn')",
+            name="ck_applications_outcome",
         ),
     )
 
@@ -254,6 +260,8 @@ class CvVersion(Base):
     final_cv_json: Mapped[dict | None] = mapped_column(JSONB)
     pdf_path: Mapped[str | None] = mapped_column(Text)
     docx_path: Mapped[str | None] = mapped_column(Text)
+    ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ats_warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

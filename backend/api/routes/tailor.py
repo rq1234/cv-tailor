@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, Request
@@ -20,10 +21,19 @@ from backend.api.auth import get_current_user
 from backend.api.db_helpers import fetch_active_rules_text
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, WorkExperience
-from backend.schemas.pydantic import TailorRunRequest
+from backend.schemas.pydantic import RegenerateBulletRequest, TailorRunRequest
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
 limiter = Limiter(key_func=get_remote_address)
+
+# Maximum time a single pipeline run is allowed to take (10 minutes).
+_PIPELINE_TIMEOUT_S = 600
+
+# In-flight guard: tracks which users currently have a pipeline running.
+# Single-process safe (Render Starter = 1 process). For multi-process, move to Redis.
+_active_tailoring: set[str] = set()
 
 
 @router.post("/run")
@@ -49,6 +59,15 @@ async def run_tailoring(
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 
+    user_key = str(user_id)
+
+    # Reject concurrent pipelines for the same user.
+    if user_key in _active_tailoring:
+        raise HTTPException(
+            status_code=409,
+            detail="A tailoring job is already running for your account. Please wait for it to finish.",
+        )
+
     async def event_generator():
         step_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
 
@@ -65,13 +84,15 @@ async def run_tailoring(
             "saving": "Saving results...",
         }
 
-        # Run pipeline in background task
+        _active_tailoring.add(user_key)
         pipeline_task = asyncio.create_task(
-            run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step)
+            asyncio.wait_for(
+                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step),
+                timeout=_PIPELINE_TIMEOUT_S,
+            )
         )
 
         try:
-            # Stream step updates
             completed_steps = 0
             total_steps = 7
             while not pipeline_task.done() or not step_queue.empty():
@@ -92,14 +113,11 @@ async def run_tailoring(
                 except asyncio.TimeoutError:
                     continue
 
-            # Get final result
+            # Collect final result — raises if the task itself raised.
             state = await pipeline_task
 
             if state.error:
-                yield {
-                    "event": "error",
-                    "data": json.dumps({"error": state.error}),
-                }
+                yield {"event": "error", "data": json.dumps({"error": state.error})}
             else:
                 yield {
                     "event": "complete",
@@ -110,9 +128,23 @@ async def run_tailoring(
                         "diffs_count": len(state.tailored_experiences),
                     }),
                 }
+
+        except asyncio.TimeoutError:
+            pipeline_task.cancel()
+            logger.error("Pipeline timed out after %ds for application %s", _PIPELINE_TIMEOUT_S, body.application_id)
+            yield {"event": "error", "data": json.dumps({"error": "Tailoring timed out. Please try again."})}
+
         except asyncio.CancelledError:
             pipeline_task.cancel()
             return
+
+        except Exception:
+            pipeline_task.cancel()
+            logger.exception("Pipeline raised unexpectedly for application %s", body.application_id)
+            yield {"event": "error", "data": json.dumps({"error": "An unexpected error occurred. Please try again."})}
+
+        finally:
+            _active_tailoring.discard(user_key)
 
     return EventSourceResponse(event_generator())
 
@@ -322,6 +354,8 @@ async def get_tailor_result(
         "selected_skills": [str(s) for s in (cv_version.selected_skills or [])],
         "accepted_changes": cv_version.accepted_changes,
         "rejected_changes": cv_version.rejected_changes,
+        "ats_score": cv_version.ats_score,
+        "ats_warnings": cv_version.ats_warnings or [],
         "status": app.status,
     }
 
@@ -587,4 +621,124 @@ async def re_tailor_application(
         "status": "re-tailored",
         "cv_version_id": str(cv_version.id),
         "diffs_count": len(diff_json),
+    }
+
+
+@router.post("/regenerate-bullet")
+async def regenerate_bullet(
+    body: RegenerateBulletRequest,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Re-run tailoring for a single bullet and return the new suggestion.
+
+    Does not persist the result — the frontend patches its local state.
+    """
+    # 1. Fetch application (ownership check + jd_parsed)
+    app_result = await db.execute(
+        select(Application).where(
+            Application.id == body.application_id,
+            Application.user_id == user_id,
+        )
+    )
+    app = app_result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+    if not app.jd_parsed:
+        raise HTTPException(status_code=400, detail="Application has no parsed JD")
+
+    # 2. Fetch latest CvVersion to read diff_json
+    cv_result = await db.execute(
+        select(CvVersion)
+        .where(
+            CvVersion.application_id == body.application_id,
+            CvVersion.user_id == user_id,
+        )
+        .order_by(CvVersion.created_at.desc())
+        .limit(1)
+    )
+    cv_version = cv_result.scalar_one_or_none()
+    if not cv_version:
+        raise HTTPException(status_code=404, detail="No CV version found")
+
+    diff = cv_version.diff_json or {}
+    entry = diff.get(body.experience_id)
+    if not entry:
+        raise HTTPException(status_code=404, detail="Entry not found in diff_json")
+
+    original_bullets = entry.get("original_bullets", [])
+    if body.bullet_index < 0 or body.bullet_index >= len(original_bullets):
+        raise HTTPException(status_code=400, detail="bullet_index out of range")
+
+    original_bullet = original_bullets[body.bullet_index]
+    entity_type = entry.get("type", "experience")
+    exp_id_str = body.experience_id
+
+    rules_text = await fetch_active_rules_text(db, user_id)
+
+    # 3. Fetch the entity and call the appropriate tailor function with just this bullet
+    if entity_type == "experience":
+        ent_result = await db.execute(
+            select(WorkExperience).where(
+                WorkExperience.id == uuid.UUID(exp_id_str),
+                WorkExperience.user_id == user_id,
+            )
+        )
+        entity = ent_result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Work experience not found")
+
+        tailored = await tailor_experiences(
+            [{"id": exp_id_str, "company": entity.company, "role_title": entity.role_title, "bullets": [original_bullet]}],
+            app.jd_parsed,
+            None,
+            rules_text,
+        )
+        bullet = tailored[0].suggested_bullets[0]
+
+    elif entity_type == "project":
+        ent_result = await db.execute(
+            select(Project).where(
+                Project.id == uuid.UUID(exp_id_str),
+                Project.user_id == user_id,
+            )
+        )
+        entity = ent_result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Project not found")
+
+        tailored = await tailor_projects(
+            [{"id": exp_id_str, "name": entity.name, "description": entity.description, "bullets": [original_bullet]}],
+            app.jd_parsed,
+            rules_text,
+        )
+        bullet = tailored[0].suggested_bullets[0]
+
+    elif entity_type == "activity":
+        ent_result = await db.execute(
+            select(Activity).where(
+                Activity.id == uuid.UUID(exp_id_str),
+                Activity.user_id == user_id,
+            )
+        )
+        entity = ent_result.scalar_one_or_none()
+        if not entity:
+            raise HTTPException(status_code=404, detail="Activity not found")
+
+        tailored = await tailor_activities(
+            [{"id": exp_id_str, "organization": entity.organization, "role_title": entity.role_title, "bullets": [original_bullet]}],
+            app.jd_parsed,
+            rules_text,
+        )
+        bullet = tailored[0].suggested_bullets[0]
+
+    else:
+        raise HTTPException(status_code=400, detail=f"Unknown entity type: {entity_type}")
+
+    return {
+        "suggested_bullet": {
+            "text": bullet.text,
+            "has_placeholder": bullet.has_placeholder,
+            "outcome_type": bullet.outcome_type,
+        }
     }

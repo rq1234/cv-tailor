@@ -18,6 +18,8 @@ interface DiffViewProps {
   setBulletDecision: (expId: string, idx: number, decision: "accept" | "reject" | "edit", editedText?: string) => void;
   manualEdits?: Record<string, string>;
   setManualEdit?: (key: string, value: string) => void;
+  regeneratingBullet?: { expId: string; idx: number } | null;
+  onRegenerateBullet?: (expId: string, idx: number) => void;
 }
 
 export default function DiffView({
@@ -29,6 +31,8 @@ export default function DiffView({
   setBulletDecision,
   manualEdits = {},
   setManualEdit = () => {},
+  regeneratingBullet = null,
+  onRegenerateBullet,
 }: DiffViewProps) {
   const [editingKey, setEditingKey] = useState<string | null>(null);
 
@@ -127,8 +131,12 @@ export default function DiffView({
           <h2 className="text-lg font-bold mb-3">{section.label}</h2>
           {section.entries.map(([entryId, diff]) => {
             const meta = getDiffMeta(entryId, diff, result);
+            const borderColour =
+              diff.confidence >= 0.85 ? "border-green-200"
+              : diff.confidence < 0.70 ? "border-amber-200"
+              : "border-gray-200";
             return (
-              <div key={entryId} className="rounded-lg border mb-4">
+              <div key={entryId} className={`rounded-lg border mb-4 ${borderColour}`}>
                 <div className="border-b bg-muted/50 px-4 py-3">
                   <div className="flex items-center justify-between">
                     <div>
@@ -230,6 +238,18 @@ export default function DiffView({
                               >
                                 Edit
                               </button>
+                              {onRegenerateBullet && (
+                                <button
+                                  onClick={() => onRegenerateBullet(entryId, idx)}
+                                  disabled={regeneratingBullet !== null}
+                                  className="rounded px-2 py-0.5 text-xs bg-muted text-muted-foreground hover:bg-orange-50 disabled:opacity-50"
+                                  title="Get a new AI suggestion for this bullet"
+                                >
+                                  {regeneratingBullet?.expId === entryId && regeneratingBullet?.idx === idx
+                                    ? "…"
+                                    : "↻"}
+                                </button>
+                              )}
                             </div>
                           </div>
 

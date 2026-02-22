@@ -64,12 +64,22 @@ async def upload_cv(
     else:
         raise HTTPException(status_code=400, detail="Only PDF and DOCX files are supported")
 
+    # Validate magic bytes match the declared file type
+    PDF_MAGIC = b"%PDF"
+    DOCX_MAGIC = b"PK\x03\x04"
+    if file_type == "pdf" and not file_bytes.startswith(PDF_MAGIC):
+        raise HTTPException(status_code=400, detail="File content does not match PDF format")
+    if file_type == "docx" and not file_bytes.startswith(DOCX_MAGIC):
+        raise HTTPException(status_code=400, detail="File content does not match DOCX format")
+
     try:
         return await parse_and_store_cv(db, file_bytes, file.filename, file_type, user_id)
     except ValueError as e:
-        raise HTTPException(status_code=400, detail=str(e))
+        logger.warning("CV parse validation error for user %s: %s", user_id, e)
+        raise HTTPException(status_code=400, detail="Could not parse the uploaded file. Please ensure it is a valid CV.")
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail=str(e))
+        logger.error("CV parse runtime error for user %s: %s", user_id, e)
+        raise HTTPException(status_code=500, detail="An error occurred while processing your CV.")
 
 
 @router.post("/re-embed")

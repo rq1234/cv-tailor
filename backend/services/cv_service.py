@@ -88,7 +88,7 @@ async def parse_and_store_cv(
 
     # Structure with GPT-4o
     try:
-        parsed = await structure_cv_text(raw_text)
+        parsed = await structure_cv_text(raw_text, db)
         upload.parsing_status = "complete"
     except Exception as e:
         upload.parsing_status = "failed"

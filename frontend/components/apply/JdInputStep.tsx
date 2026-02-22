@@ -1,8 +1,8 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { JD_MAX_CHARS } from "@/lib/schemas";
 
-type JdSource = "paste" | "screenshot" | "url";
+type JdSource = "paste" | "screenshot";
 
 interface JdInputStepProps {
   jdText: string;
@@ -20,6 +20,14 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLab
   const [screenshotError, setScreenshotError] = useState<string | null>(null);
   const [dragActive, setDragActive] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const objectUrlRef = useRef<string | null>(null);
+
+  // Revoke object URL on unmount to free memory
+  useEffect(() => {
+    return () => {
+      if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    };
+  }, []);
 
   const handleScreenshotFile = useCallback(async (file: File) => {
     const allowedTypes = ["image/png", "image/jpeg", "image/webp", "image/gif"];
@@ -33,7 +41,11 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLab
     }
 
     setScreenshotError(null);
-    setScreenshotPreview(URL.createObjectURL(file));
+    // Revoke any previous object URL before creating a new one
+    if (objectUrlRef.current) URL.revokeObjectURL(objectUrlRef.current);
+    const objectUrl = URL.createObjectURL(file);
+    objectUrlRef.current = objectUrl;
+    setScreenshotPreview(objectUrl);
     setScreenshotExtracting(true);
     try {
       const result = await api.uploadScreenshot(file);
@@ -60,7 +72,7 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLab
       <h2 className="text-lg font-semibold">Job Description</h2>
 
       <div className="flex gap-1 rounded-lg border p-1">
-        {(["paste", "screenshot", "url"] as const).map((source) => (
+        {(["paste", "screenshot"] as const).map((source) => (
           <button
             key={source}
             onClick={() => setJdSource(source)}
@@ -70,7 +82,7 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLab
                 : "hover:bg-muted"
             }`}
           >
-            {source === "paste" ? "Paste" : source === "screenshot" ? "Screenshot" : "URL"}
+            {source === "paste" ? "Paste" : "Screenshot"}
           </button>
         ))}
       </div>
@@ -170,18 +182,6 @@ export default function JdInputStep({ jdText, setJdText, onBack, onNext, nextLab
               />
             </div>
           )}
-        </div>
-      )}
-
-      {jdSource === "url" && (
-        <div className="space-y-2">
-          <div className="rounded-md bg-amber-50 border border-amber-200 p-3">
-            <p className="text-xs text-amber-700">
-              LinkedIn URLs are not supported &mdash; please paste the JD text directly instead.
-            </p>
-          </div>
-          <input type="url" className="w-full rounded-md border px-3 py-2 text-sm" placeholder="https://..." disabled />
-          <p className="text-xs text-muted-foreground">URL scraping coming in Phase 15</p>
         </div>
       )}
 

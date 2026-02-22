@@ -1,7 +1,6 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { useFileSystem } from "@/hooks/useFileSystem";
 import { useAuthStore } from "@/store/authStore";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
 import { api } from "@/lib/api";
@@ -14,7 +13,6 @@ interface TailoringRule {
 }
 
 export default function SettingsPage() {
-  const { directoryName, pickDirectory, hasDirectory } = useFileSystem();
   const { user, signOut } = useAuthStore();
   const [rules, setRules] = useState<TailoringRule[]>([]);
   const [newRule, setNewRule] = useState("");
@@ -92,28 +90,6 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
-
-      {/* Output Folder */}
-      <section className="space-y-3">
-        <h2 className="text-lg font-semibold">Output Folder</h2>
-        <p className="text-sm text-muted-foreground">
-          Choose a folder where exported CVs will be saved automatically. Each
-          company gets its own subfolder.
-        </p>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={pickDirectory}
-            className="rounded-md border px-4 py-2 text-sm hover:bg-muted"
-          >
-            {hasDirectory ? "Change Folder" : "Pick Folder"}
-          </button>
-          {directoryName && (
-            <span className="text-sm text-muted-foreground">
-              Current: <span className="font-medium text-foreground">{directoryName}</span>
-            </span>
-          )}
-        </div>
-      </section>
 
       {/* Tailoring Rules */}
       <section className="space-y-3">

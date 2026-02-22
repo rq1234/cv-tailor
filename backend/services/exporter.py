@@ -330,6 +330,8 @@ def _escape_latex(text: str) -> str:
     if not text:
         return ""
     text = str(text)
+    # Strip null bytes and ASCII control characters (keep printable + tab/space)
+    text = "".join(ch for ch in text if ch >= " " or ch == "\t")
     # Backslash MUST be replaced first to avoid double-escaping
     text = text.replace("\\", r"\textbackslash{}")
     for char, replacement in [

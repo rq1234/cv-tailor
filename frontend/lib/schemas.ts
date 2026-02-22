@@ -154,6 +154,16 @@ export const jdRawSchema = z
   .max(JD_MAX_CHARS, `Job description must be under ${JD_MAX_CHARS.toLocaleString()} characters`);
 
 // ── Applications ───────────────────────────────────────────────────────
+export const OUTCOME_OPTIONS = [
+  { value: "applied",   label: "Applied",     className: "text-blue-700 bg-blue-50" },
+  { value: "interview", label: "Interviewing", className: "text-purple-700 bg-purple-50" },
+  { value: "offer",     label: "Offer",        className: "text-green-700 bg-green-50" },
+  { value: "rejected",  label: "Rejected",     className: "text-red-700 bg-red-50" },
+  { value: "withdrawn", label: "Withdrawn",    className: "text-gray-600 bg-gray-100" },
+] as const;
+
+export type OutcomeValue = typeof OUTCOME_OPTIONS[number]["value"];
+
 export const applicationSchema = z.object({
   id: z.string().uuid(),
   company_name: z.string(),
@@ -162,6 +172,7 @@ export const applicationSchema = z.object({
   jd_parsed: z.record(z.string(), z.any()).nullable(),
   jd_source: z.string().nullable(),
   status: z.string(),
+  outcome: z.string().nullable(),
   created_at: z.string(),
 });
 

@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useApplication } from "@/hooks/useApplication";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import { useAppStore } from "@/store/appStore";
 import JdInputStep from "@/components/apply/JdInputStep";
 import PipelineProgress from "@/components/apply/PipelineProgress";
@@ -45,6 +45,8 @@ export default function ApplyPage() {
     applicationId: string,
     retriesLeft: number,
   ): Promise<void> => {
+    // Abort any previous stream before starting a new one.
+    abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
 
@@ -116,7 +118,11 @@ export default function ApplyPage() {
           return runStream(applicationId, retriesLeft - 1);
         }
       } else {
-        const errMsg = err instanceof Error ? err.message : "Tailoring failed";
+        // 409 means the backend already has a pipeline running for this user.
+        const is409 = err instanceof ApiError && err.status === 409;
+        const errMsg = is409
+          ? "A tailoring job is already running. Please wait for it to finish."
+          : err instanceof Error ? err.message : "Tailoring failed";
         setPipelineErrorLocal(errMsg);
         setPipelineError(errMsg);
         setTailoring(false);

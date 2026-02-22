@@ -63,6 +63,8 @@ export interface TailorResult {
   activity_meta: Record<string, ActivityMeta>;
   education_data: EducationData[];
   skills_data: Record<string, string[]>;
+  ats_score?: number;
+  ats_warnings?: AtsWarning[];
   status: string;
 }
 

@@ -10,10 +10,10 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
-from backend.api.db_helpers import get_or_404
+from backend.api.db_helpers import delete_or_404, get_or_404
 from backend.models.database import get_db
 from backend.models.tables import Application
-from backend.schemas.pydantic import ApplicationCreate, ApplicationOut
+from backend.schemas.pydantic import ApplicationCreate, ApplicationOut, ApplicationUpdate
 from backend.services.screenshot_ocr import extract_text_from_screenshot
 
 router = APIRouter(prefix="/api/applications", tags=["applications"])
@@ -90,3 +90,33 @@ async def get_application(
     """Get a single application by ID."""
     app = await get_or_404(db, Application, application_id, user_id, "Application not found")
     return ApplicationOut.model_validate(app)
+
+
+VALID_OUTCOMES = {"applied", "interview", "offer", "rejected", "withdrawn"}
+
+
+@router.patch("/{application_id}", response_model=ApplicationOut)
+async def update_application(
+    application_id: uuid.UUID,
+    body: ApplicationUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Update outcome for an application."""
+    if body.outcome is not None and body.outcome not in VALID_OUTCOMES:
+        raise HTTPException(status_code=400, detail=f"Invalid outcome. Must be one of: {', '.join(sorted(VALID_OUTCOMES))}")
+    app = await get_or_404(db, Application, application_id, user_id, "Application not found")
+    app.outcome = body.outcome
+    await db.commit()
+    await db.refresh(app)
+    return ApplicationOut.model_validate(app)
+
+
+@router.delete("/{application_id}")
+async def delete_application(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Delete an application and all associated data."""
+    return await delete_or_404(db, Application, application_id, user_id, "Application not found")

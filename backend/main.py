@@ -57,6 +57,7 @@ class SecurityHeadersMiddleware:
         (b"x-xss-protection", b"1; mode=block"),
         (b"strict-transport-security", b"max-age=31536000; includeSubDomains"),
         (b"referrer-policy", b"strict-origin-when-cross-origin"),
+        (b"content-security-policy", b"default-src 'none'"),
     ]
 
     def __init__(self, app: ASGIApp) -> None:
@@ -82,8 +83,8 @@ app.add_middleware(
     allow_origins=settings.cors_origins,
     allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
     expose_headers=["Content-Disposition"],
 )
 
@@ -114,7 +115,7 @@ application = CORSMiddleware(
     allow_origins=settings.cors_origins,
     allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
     allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allow_headers=["Authorization", "Content-Type"],
     expose_headers=["Content-Disposition"],
 )

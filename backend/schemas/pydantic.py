@@ -188,6 +188,10 @@ class ApplicationCreate(BaseModel):
     jd_source: str = "paste"
 
 
+class ApplicationUpdate(BaseModel):
+    outcome: str | None = Field(None)
+
+
 class ApplicationOut(BaseModel):
     model_config = _ORM_CONFIG
     id: uuid.UUID
@@ -197,12 +201,19 @@ class ApplicationOut(BaseModel):
     jd_parsed: dict | None
     jd_source: str | None
     status: str
+    outcome: str | None
     created_at: datetime
 
 
 # ── Tailoring ──────────────────────────────────────────────────────────
 class TailorRunRequest(BaseModel):
     application_id: uuid.UUID
+
+
+class RegenerateBulletRequest(BaseModel):
+    application_id: uuid.UUID
+    experience_id: str  # key in diff_json (UUID string)
+    bullet_index: int
 
 
 class BulletDiff(BaseModel):
@@ -233,7 +244,7 @@ class AcceptChangesRequest(BaseModel):
 
 # ── Tailoring Rules ───────────────────────────────────────────────────
 class TailoringRuleCreate(BaseModel):
-    rule_text: str
+    rule_text: str = Field(..., min_length=1, max_length=2000)
 
 
 class TailoringRuleOut(BaseModel):
@@ -245,7 +256,7 @@ class TailoringRuleOut(BaseModel):
 
 
 class TailoringRuleUpdate(BaseModel):
-    rule_text: str | None = None
+    rule_text: str | None = Field(None, max_length=2000)
     is_active: bool | None = None
 
 

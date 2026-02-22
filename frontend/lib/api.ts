@@ -9,6 +9,21 @@ import { supabase } from "@/lib/supabase";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
 
+/**
+ * Typed error thrown by every api.* method.
+ * Callers can `instanceof ApiError` and read `.status` to distinguish
+ * 4xx user errors (e.g. 409 in-flight conflict) from 5xx server errors.
+ */
+export class ApiError extends Error {
+  constructor(
+    message: string,
+    public readonly status: number,
+  ) {
+    super(message);
+    this.name = "ApiError";
+  }
+}
+
 /** Timeout per attempt — long enough to survive a Render cold start (~60s). */
 const REQUEST_TIMEOUT_MS = 90_000;
 
@@ -57,7 +72,7 @@ async function request<T>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `Request failed: ${res.status}`);
+    throw new ApiError(error.detail || `Request failed: ${res.status}`, res.status);
   }
 
   return res.json();
@@ -91,7 +106,7 @@ async function _uploadFile<T>(
 
   if (!res.ok) {
     const error = await res.json().catch(() => ({ detail: res.statusText }));
-    throw new Error(error.detail || `Upload failed: ${res.status}`);
+    throw new ApiError(error.detail || `Upload failed: ${res.status}`, res.status);
   }
 
   return res.json();
@@ -109,6 +124,12 @@ export const api = {
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: "PUT",
+      body: body ? JSON.stringify(body) : undefined,
+    }),
+
+  patch: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: "PATCH",
       body: body ? JSON.stringify(body) : undefined,
     }),
 
@@ -131,7 +152,7 @@ export const api = {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || `Download failed: ${res.status}`);
+      throw new ApiError(error.detail || `Download failed: ${res.status}`, res.status);
     }
 
     const blob = await res.blob();
@@ -152,7 +173,7 @@ export const api = {
 
     if (!res.ok) {
       const error = await res.json().catch(() => ({ detail: res.statusText }));
-      throw new Error(error.detail || `Stream failed: ${res.status}`);
+      throw new ApiError(error.detail || `Stream failed: ${res.status}`, res.status);
     }
 
     return res;

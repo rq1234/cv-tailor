@@ -2,10 +2,13 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from typing import Any
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -73,6 +76,7 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
         app.status = "tailoring"
         await db.commit()
     except Exception as e:
+        logger.exception("JD parsing failed for application %s", state.application_id)
         state.error = f"JD parsing failed: {e}"
     return state
 
@@ -87,6 +91,7 @@ async def select_experiences_node(state: PipelineState, db: AsyncSession) -> Pip
         selection = await select_experiences(db, state.jd_parsed, user_uuid)
         state.selection = selection.model_dump()
     except Exception as e:
+        logger.exception("Experience selection failed for application %s", state.application_id)
         state.error = f"Experience selection failed: {e}"
     return state
 
@@ -138,6 +143,7 @@ async def analyze_gaps_node(state: PipelineState, db: AsyncSession) -> PipelineS
         gap_result = await analyze_gaps(exp_dicts, state.jd_parsed, act_dicts)
         state.gap_analysis = gap_result.model_dump()
     except Exception as e:
+        logger.exception("Gap analysis failed for application %s", state.application_id)
         state.error = f"Gap analysis failed: {e}"
     return state
 
@@ -176,6 +182,7 @@ async def tailor_cv_node(state: PipelineState, db: AsyncSession) -> PipelineStat
         )
         state.tailored_experiences = [t.model_dump() for t in tailored]
     except Exception as e:
+        logger.exception("CV tailoring failed for application %s", state.application_id)
         state.error = f"CV tailoring failed: {e}"
     return state
 
@@ -221,6 +228,7 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
             tailored_acts = await tailor_activities(act_dicts, state.jd_parsed, rules_text)
             state.tailored_activities = [t.model_dump() for t in tailored_acts]
     except Exception as e:
+        logger.exception("Project/activity tailoring failed for application %s", state.application_id)
         state.error = f"Project/activity tailoring failed: {e}"
     return state
 
@@ -268,6 +276,7 @@ async def ats_check_node(state: PipelineState, db: AsyncSession) -> PipelineStat
         ats_result = await check_ats_compliance(cv_json)
         state.ats_result = ats_result.model_dump()
     except Exception as e:
+        logger.exception("ATS check failed for application %s", state.application_id)
         state.error = f"ATS check failed: {e}"
     return state
 
@@ -332,6 +341,8 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 uuid.UUID(s) for s in selection.get("selected_skills", [])
             ],
             diff_json=diff_json,
+            ats_score=state.ats_result.get("ats_score"),
+            ats_warnings=state.ats_result.get("warnings", []),
         )
         db.add(cv_version)
         await db.flush()
@@ -350,6 +361,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
 
         state.current_step = "complete"
     except Exception as e:
+        logger.exception("Saving results failed for application %s", state.application_id)
         state.error = f"Saving results failed: {e}"
     return state
 

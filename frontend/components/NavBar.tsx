@@ -6,10 +6,10 @@ import { useAuthStore } from "@/store/authStore";
 import UserMenu from "@/components/UserMenu";
 
 const navItems = [
-  { href: "/apply", label: "New Application" },
   { href: "/applications", label: "Applications" },
-  { href: "/library", label: "Library" },
-  { href: "/upload", label: "Add / Update CV" },
+  { href: "/apply", label: "New Application" },
+  { href: "/library", label: "CV Library" },
+  { href: "/upload", label: "Upload" },
   { href: "/settings", label: "Settings" },
 ];
 
@@ -20,7 +20,7 @@ export default function NavBar() {
   return (
     <nav className="border-b bg-white">
       <div className="mx-auto flex h-14 max-w-7xl items-center gap-6 px-4">
-        <Link href={user ? "/library" : "/"} className="text-lg font-semibold">
+        <Link href={user ? "/applications" : "/"} className="text-lg font-semibold">
           CV Tailor
         </Link>
         {!initializing && user && (

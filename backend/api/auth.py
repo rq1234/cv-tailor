@@ -67,16 +67,17 @@ async def get_current_user(
             headers={"WWW-Authenticate": "Bearer"},
         )
     except jwt.InvalidTokenError as e:
+        logger.warning("JWT validation failed: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Unauthorized: {e}",
+            detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except (PyJWKClientError, PyJWKError) as e:
         logger.error("JWKS error during token verification: %s", e)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail=f"Could not verify token: {e}",
+            detail="Unauthorized",
             headers={"WWW-Authenticate": "Bearer"},
         )
     except Exception as e:
