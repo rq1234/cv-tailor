@@ -154,6 +154,9 @@ export default function LandingPage() {
           <p className="mt-3 text-xs text-muted-foreground">
             No credit card required.
           </p>
+          <p className="mt-2 text-sm font-medium text-primary">
+            CVTailorAlpha is coming soon.
+          </p>
         </div>
 
         {/* Right: product mockup */}
