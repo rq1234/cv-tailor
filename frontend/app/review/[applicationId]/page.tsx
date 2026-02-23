@@ -528,10 +528,10 @@ export default function ReviewPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h1 className="text-2xl font-bold">Review Tailored CV</h1>
-        <div className="flex items-center gap-2">
-          <div className="text-sm text-muted-foreground mr-2">
+        <div className="flex flex-wrap items-center gap-2">
+          <div className="text-sm text-muted-foreground w-full sm:w-auto">
             {counts.total} suggestions &mdash; {counts.accepted} accepted,{" "}
             {counts.rejected} rejected, {counts.edited} edited
           </div>
@@ -564,7 +564,7 @@ export default function ReviewPage() {
             Reject All
           </button>
 
-          <div className="h-5 w-px bg-gray-200" />
+          <div className="hidden sm:block h-5 w-px bg-gray-200" />
 
           {/* Re-tailor — kept separate as it re-runs the pipeline */}
           <button

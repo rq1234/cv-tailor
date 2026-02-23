@@ -138,114 +138,213 @@ export default function ApplicationsPage() {
           </Link>
         </div>
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <table className="w-full text-sm">
-            <thead className="border-b bg-muted/50">
-              <tr>
-                <th className="px-4 py-3 text-left font-medium">Company</th>
-                <th className="px-4 py-3 text-left font-medium">Role</th>
-                <th className="px-4 py-3 text-left font-medium">Status</th>
-                <th className="px-4 py-3 text-left font-medium">Outcome</th>
-                <th className="px-4 py-3 text-left font-medium">Date</th>
-                <th className="px-4 py-3 text-right font-medium"></th>
-              </tr>
-            </thead>
-            <tbody className="divide-y">
-              {applications.map((app) => {
-                const status = STATUS_LABEL[app.status] ?? { label: app.status, className: "bg-gray-100 text-gray-600" };
-                const date = new Date(app.created_at).toLocaleDateString("en-GB", {
-                  day: "numeric", month: "short", year: "numeric",
-                });
-                const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === app.outcome);
-                const isConfirmingDelete = confirmDelete === app.id;
-                const isDeletingThis = deleting === app.id;
-                const isRetailoring = retailoringId === app.id;
-                const canRetailor = app.status === "review" || app.status === "complete";
+        <>
+          {/* Mobile card list */}
+          <div className="flex flex-col gap-3 sm:hidden">
+            {applications.map((app) => {
+              const status = STATUS_LABEL[app.status] ?? { label: app.status, className: "bg-gray-100 text-gray-600" };
+              const date = new Date(app.created_at).toLocaleDateString("en-GB", {
+                day: "numeric", month: "short", year: "numeric",
+              });
+              const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === app.outcome);
+              const isConfirmingDelete = confirmDelete === app.id;
+              const isDeletingThis = deleting === app.id;
+              const isRetailoring = retailoringId === app.id;
+              const canRetailor = app.status === "review" || app.status === "complete";
 
-                return (
-                  <tr key={app.id} className="hover:bg-muted/30 transition-colors">
-                    <td className="px-4 py-3 font-medium">{app.company_name}</td>
-                    <td className="px-4 py-3 text-muted-foreground">{app.role_title || "—"}</td>
-                    <td className="px-4 py-3">
-                      <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
-                        {isRetailoring ? "Re-tailoring..." : status.label}
-                      </span>
-                    </td>
-                    <td className="px-4 py-3">
-                      <div className="relative inline-flex items-center">
-                        <select
-                          value={app.outcome ?? ""}
-                          onChange={(e) => handleOutcomeChange(app.id, e.target.value as OutcomeValue | "")}
-                          disabled={savingOutcome === app.id}
-                          className={`rounded-full border-0 py-0.5 pl-2 pr-6 text-xs font-medium appearance-none cursor-pointer focus:ring-1 focus:ring-primary disabled:opacity-50 ${
-                            outcomeOption ? outcomeOption.className : "text-muted-foreground bg-muted/50"
-                          }`}
+              return (
+                <div key={app.id} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-start justify-between gap-2">
+                    <div className="min-w-0">
+                      <p className="font-medium truncate">{app.company_name}</p>
+                      {app.role_title && (
+                        <p className="text-sm text-muted-foreground truncate">{app.role_title}</p>
+                      )}
+                      <p className="text-xs text-muted-foreground mt-0.5">{date}</p>
+                    </div>
+                    <span className={`shrink-0 inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
+                      {isRetailoring ? "Re-tailoring..." : status.label}
+                    </span>
+                  </div>
+
+                  <div className="relative inline-flex items-center">
+                    <select
+                      value={app.outcome ?? ""}
+                      onChange={(e) => handleOutcomeChange(app.id, e.target.value as OutcomeValue | "")}
+                      disabled={savingOutcome === app.id}
+                      className={`rounded-full border-0 py-0.5 pl-2 pr-6 text-xs font-medium appearance-none cursor-pointer focus:ring-1 focus:ring-primary disabled:opacity-50 ${
+                        outcomeOption ? outcomeOption.className : "text-muted-foreground bg-muted/50"
+                      }`}
+                    >
+                      <option value="">— set outcome —</option>
+                      {OUTCOME_OPTIONS.map((o) => (
+                        <option key={o.value} value={o.value}>{o.label}</option>
+                      ))}
+                    </select>
+                    <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-current opacity-60" viewBox="0 0 20 20" fill="currentColor">
+                      <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                    </svg>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {canRetailor && (
+                      <Link
+                        href={`/review/${app.id}`}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted"
+                      >
+                        Review
+                      </Link>
+                    )}
+                    {canRetailor && (
+                      <button
+                        onClick={() => handleRetailor(app.id)}
+                        disabled={isRetailoring}
+                        className="rounded-md border px-3 py-1.5 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                      >
+                        {isRetailoring ? "..." : "Re-tailor"}
+                      </button>
+                    )}
+                    {isConfirmingDelete ? (
+                      <span className="flex items-center gap-1">
+                        <span className="text-xs text-muted-foreground">Delete?</span>
+                        <button
+                          onClick={() => handleDelete(app.id)}
+                          disabled={isDeletingThis}
+                          className="rounded px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
                         >
-                          <option value="">— set outcome —</option>
-                          {OUTCOME_OPTIONS.map((o) => (
-                            <option key={o.value} value={o.value}>{o.label}</option>
-                          ))}
-                        </select>
-                        <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-current opacity-60" viewBox="0 0 20 20" fill="currentColor">
-                          <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                        </svg>
-                      </div>
-                    </td>
-                    <td className="px-4 py-3 text-muted-foreground">{date}</td>
-                    <td className="px-4 py-3 text-right">
-                      <div className="flex items-center justify-end gap-2">
-                        {canRetailor && (
-                          <Link
-                            href={`/review/${app.id}`}
-                            className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted"
+                          {isDeletingThis ? "..." : "Yes"}
+                        </button>
+                        <button
+                          onClick={() => setConfirmDelete(null)}
+                          className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                        >
+                          No
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        onClick={() => setConfirmDelete(app.id)}
+                        className="rounded border border-transparent px-2 py-1.5 text-xs text-muted-foreground hover:border-red-200 hover:text-red-600 hover:bg-red-50"
+                      >
+                        Delete
+                      </button>
+                    )}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Desktop table */}
+          <div className="hidden sm:block overflow-hidden rounded-lg border">
+            <table className="w-full text-sm">
+              <thead className="border-b bg-muted/50">
+                <tr>
+                  <th className="px-4 py-3 text-left font-medium">Company</th>
+                  <th className="px-4 py-3 text-left font-medium">Role</th>
+                  <th className="px-4 py-3 text-left font-medium">Status</th>
+                  <th className="px-4 py-3 text-left font-medium">Outcome</th>
+                  <th className="px-4 py-3 text-left font-medium">Date</th>
+                  <th className="px-4 py-3 text-right font-medium"></th>
+                </tr>
+              </thead>
+              <tbody className="divide-y">
+                {applications.map((app) => {
+                  const status = STATUS_LABEL[app.status] ?? { label: app.status, className: "bg-gray-100 text-gray-600" };
+                  const date = new Date(app.created_at).toLocaleDateString("en-GB", {
+                    day: "numeric", month: "short", year: "numeric",
+                  });
+                  const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === app.outcome);
+                  const isConfirmingDelete = confirmDelete === app.id;
+                  const isDeletingThis = deleting === app.id;
+                  const isRetailoring = retailoringId === app.id;
+                  const canRetailor = app.status === "review" || app.status === "complete";
+
+                  return (
+                    <tr key={app.id} className="hover:bg-muted/30 transition-colors">
+                      <td className="px-4 py-3 font-medium">{app.company_name}</td>
+                      <td className="px-4 py-3 text-muted-foreground">{app.role_title || "—"}</td>
+                      <td className="px-4 py-3">
+                        <span className={`inline-flex rounded-full px-2 py-0.5 text-xs font-medium ${status.className}`}>
+                          {isRetailoring ? "Re-tailoring..." : status.label}
+                        </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="relative inline-flex items-center">
+                          <select
+                            value={app.outcome ?? ""}
+                            onChange={(e) => handleOutcomeChange(app.id, e.target.value as OutcomeValue | "")}
+                            disabled={savingOutcome === app.id}
+                            className={`rounded-full border-0 py-0.5 pl-2 pr-6 text-xs font-medium appearance-none cursor-pointer focus:ring-1 focus:ring-primary disabled:opacity-50 ${
+                              outcomeOption ? outcomeOption.className : "text-muted-foreground bg-muted/50"
+                            }`}
                           >
-                            Review
-                          </Link>
-                        )}
-                        {canRetailor && (
-                          <button
-                            onClick={() => handleRetailor(app.id)}
-                            disabled={isRetailoring}
-                            className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
-                            title="Re-run tailoring with latest AI improvements"
-                          >
-                            {isRetailoring ? "..." : "Re-tailor"}
-                          </button>
-                        )}
-                        {isConfirmingDelete ? (
-                          <span className="flex items-center gap-1">
-                            <span className="text-xs text-muted-foreground">Delete?</span>
-                            <button
-                              onClick={() => handleDelete(app.id)}
-                              disabled={isDeletingThis}
-                              className="rounded px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                            <option value="">— set outcome —</option>
+                            {OUTCOME_OPTIONS.map((o) => (
+                              <option key={o.value} value={o.value}>{o.label}</option>
+                            ))}
+                          </select>
+                          <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-current opacity-60" viewBox="0 0 20 20" fill="currentColor">
+                            <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
+                          </svg>
+                        </div>
+                      </td>
+                      <td className="px-4 py-3 text-muted-foreground">{date}</td>
+                      <td className="px-4 py-3 text-right">
+                        <div className="flex items-center justify-end gap-2">
+                          {canRetailor && (
+                            <Link
+                              href={`/review/${app.id}`}
+                              className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted"
                             >
-                              {isDeletingThis ? "..." : "Yes"}
-                            </button>
+                              Review
+                            </Link>
+                          )}
+                          {canRetailor && (
                             <button
-                              onClick={() => setConfirmDelete(null)}
-                              className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                              onClick={() => handleRetailor(app.id)}
+                              disabled={isRetailoring}
+                              className="rounded-md border px-3 py-1 text-xs font-medium hover:bg-muted disabled:opacity-50"
+                              title="Re-run tailoring with latest AI improvements"
                             >
-                              No
+                              {isRetailoring ? "..." : "Re-tailor"}
                             </button>
-                          </span>
-                        ) : (
-                          <button
-                            onClick={() => setConfirmDelete(app.id)}
-                            className="rounded border border-transparent px-2 py-1 text-xs text-muted-foreground hover:border-red-200 hover:text-red-600 hover:bg-red-50"
-                            title="Delete application"
-                          >
-                            Delete
-                          </button>
-                        )}
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                          )}
+                          {isConfirmingDelete ? (
+                            <span className="flex items-center gap-1">
+                              <span className="text-xs text-muted-foreground">Delete?</span>
+                              <button
+                                onClick={() => handleDelete(app.id)}
+                                disabled={isDeletingThis}
+                                className="rounded px-2 py-0.5 text-xs font-medium text-red-600 hover:bg-red-50 disabled:opacity-50"
+                              >
+                                {isDeletingThis ? "..." : "Yes"}
+                              </button>
+                              <button
+                                onClick={() => setConfirmDelete(null)}
+                                className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+                              >
+                                No
+                              </button>
+                            </span>
+                          ) : (
+                            <button
+                              onClick={() => setConfirmDelete(app.id)}
+                              className="rounded border border-transparent px-2 py-1 text-xs text-muted-foreground hover:border-red-200 hover:text-red-600 hover:bg-red-50"
+                              title="Delete application"
+                            >
+                              Delete
+                            </button>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

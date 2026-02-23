@@ -43,11 +43,11 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
 
   const handleNext = () => {
     onNext({
-      experience_ids: [...selectedExp],
-      project_ids: [...selectedProj],
-      activity_ids: [...selectedAct],
-      education_ids: [...selectedEdu],
-      skill_ids: [...selectedSkill],
+      experience_ids: Array.from(selectedExp),
+      project_ids: Array.from(selectedProj),
+      activity_ids: Array.from(selectedAct),
+      education_ids: Array.from(selectedEdu),
+      skill_ids: Array.from(selectedSkill),
     });
   };
 

@@ -15,8 +15,8 @@ export default function UserMenu() {
   };
 
   return (
-    <div className="ml-auto flex items-center gap-3 text-sm">
-      <span className="text-muted-foreground">{user.email}</span>
+    <div className="flex items-center gap-3 text-sm">
+      <span className="hidden sm:inline text-muted-foreground">{user.email}</span>
       <button
         type="button"
         onClick={handleSignOut}
