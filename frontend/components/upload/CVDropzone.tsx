@@ -13,8 +13,9 @@ export function CVDropzone({ onFileSelected, disabled }: CVDropzoneProps) {
   const inputRef = useRef<HTMLInputElement>(null);
 
   const validateFile = (file: File): boolean => {
-    if (!file.name.toLowerCase().endsWith(".pdf")) {
-      setError("Only PDF files are supported");
+    const name = file.name.toLowerCase();
+    if (!name.endsWith(".pdf") && !name.endsWith(".docx")) {
+      setError("Only PDF and DOCX files are supported");
       return false;
     }
     if (file.size > 10 * 1024 * 1024) {
@@ -73,7 +74,7 @@ export function CVDropzone({ onFileSelected, disabled }: CVDropzoneProps) {
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf"
+        accept=".pdf,.docx"
         className="hidden"
         onChange={handleChange}
         disabled={disabled}
@@ -95,7 +96,7 @@ export function CVDropzone({ onFileSelected, disabled }: CVDropzoneProps) {
         <p className="mt-4 text-sm font-medium">
           Drag and drop your CV here, or <span className="text-primary hover:underline">browse</span>
         </p>
-        <p className="mt-1 text-xs text-muted-foreground">PDF only, max 10MB</p>
+        <p className="mt-1 text-xs text-muted-foreground">PDF or DOCX, max 10MB</p>
       </div>
       {error && <p className="mt-3 text-sm text-red-600">{error}</p>}
     </div>

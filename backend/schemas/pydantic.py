@@ -364,6 +364,18 @@ class ParsedProfile(BaseModel):
 class StructuredCvParse(BaseModel):
     """Full structured output from GPT-4o CV parsing."""
 
+    is_cv: bool = Field(
+        default=True,
+        description=(
+            "Set to false if the document is clearly NOT a CV/resume "
+            "(e.g. a recipe, invoice, legal contract, article). "
+            "Set to true for any document that is or resembles a CV."
+        ),
+    )
+    rejection_reason: str | None = Field(
+        default=None,
+        description="If is_cv is false, a short human-readable reason (e.g. 'This appears to be a recipe, not a CV.').",
+    )
     profile: ParsedProfile
     work_experiences: list[ParsedWorkExperience] = Field(default_factory=list)
     education: list[ParsedEducation] = Field(default_factory=list)

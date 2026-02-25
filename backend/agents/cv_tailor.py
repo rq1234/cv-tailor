@@ -518,7 +518,7 @@ Tailoring is NOT paraphrasing or shortening. Tailoring means:
 1. REFRAME the bullet to lead with the theme the JD cares about (e.g. if JD says "data pipelines", lead with the pipeline aspect, not the deployment aspect).
 2. ADD JD-relevant framing language (e.g. add "for real-time analytics" if the JD emphasizes real-time systems), but ONLY if truthful.
 3. KEEP all existing technical details — they are the substance of the bullet.
-4. If the original bullet is already a strong match, return it VERBATIM. A cosmetic synonym swap ("Built"→"Developed", "enhancing"→"boosting") is NOT tailoring — it's noise.
+4. Return VERBATIM only if the bullet ALREADY leads with the most JD-critical theme AND already uses the key JD vocabulary naturally. If the content is relevant but the JD theme is buried mid-sentence or absent, reframe the opening even if the rest stays the same. A cosmetic synonym swap ("Built"→"Developed") is NOT tailoring — only reframe when it meaningfully shifts emphasis toward a JD priority.
 
 ## Length Guideline
 - TARGET: 120-170 characters per bullet. This keeps bullets detailed and substantive.
@@ -556,7 +556,8 @@ BAD (appended filler): "Selected as 1 of 80 students for Citadel's European Trad
 GOOD: Return VERBATIM — "1 of 80 students" and "Trading Invitational" already imply quantitative ability. Adding "demonstrating quantitative analysis skills" adds zero information and sounds AI-generated.
 
 ## Output Rules
-- CRITICAL: If a bullet already matches the JD well, return it EXACTLY as-is (same text, character for character). Do NOT make cosmetic changes like spelling normalization (e.g. "visualise"→"visualize"), minor word reordering, or synonym swaps that don't add JD keywords. A change should either add a relevant keyword, reframe toward an outcome, or meaningfully restructure the bullet. If you can't improve it meaningfully, copy it verbatim.
+- CRITICAL: Do NOT make cosmetic changes like spelling normalization (e.g. "visualise"→"visualize"), minor word reordering, or synonym swaps that don't add JD keywords. A change must either: (a) reframe the opening to lead with a JD Key Responsibility theme, (b) add a JD-relevant outcome signal or framing context, or (c) meaningfully surface a hidden keyword. If none of (a)/(b)/(c) apply, copy the bullet verbatim.
+- CRITICAL: Return EXACTLY the same number of suggested_bullets as original_bullets — one per original bullet. Never split a bullet into two. Never merge two into one.
 - For each change, document what you changed and why in changes_made. If you shortened a bullet, explain what you removed and why it was safe to remove.
 - In requirements_addressed, list which JD requirements this experience's bullets now cover.
 - Set confidence based on how well the rewrite matches the JD (0.5 = minimal, 1.0 = strong match).
@@ -635,7 +636,7 @@ def _build_bullet_briefs(
                 )
             else:
                 briefs.append(
-                    "  → Tailoring brief: No direct JD keyword overlap. Look for transferable themes to surface, or return verbatim if none fit."
+                    "  → Tailoring brief: No exact JD keyword found. Check whether any of the Key Responsibilities above describe the same type of work. If so, reframe the bullet to lead with that responsibility theme. If genuinely unrelated, return verbatim."
                 )
     return briefs
 
@@ -697,10 +698,12 @@ async def tailor_experiences(
         })
 
     # Build JD summary for context
+    key_responsibilities = jd_parsed.get('key_responsibilities', [])
     jd_summary = f"""
 Role: {jd_parsed.get('role_summary', 'N/A')}
 Domain: {jd_parsed.get('domain', 'N/A')}
 Seniority: {jd_parsed.get('seniority_level', 'N/A')}
+Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
 Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
 Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
 Keywords: {', '.join(jd_parsed.get('keywords', []))}
@@ -741,6 +744,14 @@ Return all experiences."""
     )
 
     tailored = response.choices[0].message.parsed.tailored_experiences
+
+    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that experience
+    for te in tailored:
+        if len(te.suggested_bullets) != len(te.original_bullets):
+            te.suggested_bullets = [
+                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
+                for b in te.original_bullets
+            ]
 
     # Post-process: revert trivial changes where the model barely edited the bullet
     for te in tailored:
@@ -823,7 +834,7 @@ NEVER append filler like "showcasing [skill]", "demonstrating [skill]", "highlig
 - REFRAME to lead with the theme the JD cares about.
 - ADD JD-relevant framing (e.g. "for real-time analytics") only if truthful.
 - KEEP all existing tech details and metrics.
-- If already a strong match, return VERBATIM. Cosmetic synonym swaps are NOT tailoring.
+- Return VERBATIM only if the bullet ALREADY leads with the most JD-critical theme AND already uses the key JD vocabulary naturally. If the content is relevant but the JD theme is buried mid-sentence, reframe the opening. Cosmetic synonym swaps are NOT tailoring.
 
 ## Length Guideline
 - TARGET: 120-170 characters. ACCEPTABLE: 100-200 characters.
@@ -900,13 +911,16 @@ async def tailor_projects(
         return []
 
     # Build JD summary
+    key_responsibilities = jd_parsed.get('key_responsibilities', [])
     jd_summary = f"""
 Role: {jd_parsed.get('role_summary', 'N/A')}
 Domain: {jd_parsed.get('domain', 'N/A')}
 Seniority: {jd_parsed.get('seniority_level', 'N/A')}
+Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
 Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
 Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
 Keywords: {', '.join(jd_parsed.get('keywords', []))}
+Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
 """
 
     user_message = f"""Target Job Description:
@@ -945,6 +959,14 @@ Return all projects."""
     )
 
     tailored = response.choices[0].message.parsed.tailored_projects
+
+    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that project
+    for tp in tailored:
+        if len(tp.suggested_bullets) != len(tp.original_bullets):
+            tp.suggested_bullets = [
+                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
+                for b in tp.original_bullets
+            ]
 
     # Post-process: revert trivial changes
     for tp in tailored:

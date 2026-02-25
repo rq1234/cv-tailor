@@ -96,6 +96,12 @@ async def parse_and_store_cv(
         await db.commit()
         raise RuntimeError(f"CV parsing failed: {e}") from e
 
+    if not parsed.is_cv:
+        upload.parsing_status = "failed"
+        upload.parsing_notes = parsed.rejection_reason or "Not a CV"
+        await db.commit()
+        raise ValueError(parsed.rejection_reason or "The uploaded file does not appear to be a CV or resume.")
+
     review_items: list[ReviewItem] = []
     duplicate_groups: dict[str, list[DuplicateItem]] = {}
     cleanly_parsed_count = 0

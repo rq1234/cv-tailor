@@ -21,7 +21,13 @@ logger = logging.getLogger(__name__)
 # https://platform.openai.com/docs/guides/prompt-caching
 # ---------------------------------------------------------------------------
 SYSTEM_PROMPT = """\
-You are a CV/resume parser. Given raw text extracted from a CV document, extract all structured information.
+You are a CV/resume parser. Given raw text extracted from a document, first decide if it is a CV/resume.
+
+Non-CV detection:
+- If the document is clearly NOT a CV (e.g. a recipe, invoice, legal contract, news article, academic paper, user manual), set is_cv=false and provide a short rejection_reason (e.g. "This appears to be a recipe, not a CV."). Leave all other fields as empty defaults.
+- If the document is a CV, a resume, or could plausibly be one (even if poorly formatted or sparse), set is_cv=true and parse it normally.
+
+Given raw text extracted from a CV document, extract all structured information.
 
 Section name mapping — treat these as equivalent:
 - work_experiences: "Work Experience", "Professional Experience", "Employment"
