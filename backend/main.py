@@ -18,8 +18,8 @@ from backend.api.routes import applications, auth, cv, experiences, export, rule
 from backend.config import get_settings
 from backend.exceptions import AppError
 
-settings = get_settings()
-logger.info("CORS origins: %s", settings.cors_origins)
+config = get_settings()
+logger.info("CORS origins: %s", config.cors_origins)
 
 app = FastAPI(title="CV Tailor API", version="0.1.0")
 
@@ -80,7 +80,7 @@ class SecurityHeadersMiddleware:
 app.add_middleware(SecurityHeadersMiddleware)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origins,
+    allow_origins=config.cors_origins,
     allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
@@ -113,7 +113,7 @@ async def health():
 # app.add_middleware() cannot achieve this because it sits *inside* ServerErrorMiddleware.
 application = CORSMiddleware(
     app=app,
-    allow_origins=settings.cors_origins,
+    allow_origins=config.cors_origins,
     allow_origin_regex=r"https://cv-tailor(-[a-z0-9]+)?\.vercel\.app",
     allow_credentials=True,
     allow_methods=["GET", "POST", "PUT", "DELETE", "OPTIONS"],
