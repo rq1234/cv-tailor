@@ -213,6 +213,7 @@ class TailorRunRequest(BaseModel):
     pinned_activities: list[uuid.UUID] | None = None
     pinned_education: list[uuid.UUID] | None = None
     pinned_skills: list[uuid.UUID] | None = None
+    selection_mode: str = "library"  # "library" | "latest_cv"
 
 
 class RegenerateBulletRequest(BaseModel):
@@ -245,6 +246,15 @@ class TailorRunResponse(BaseModel):
 class AcceptChangesRequest(BaseModel):
     accepted_changes: dict
     rejected_changes: dict
+
+
+# ── User Preferences ──────────────────────────────────────────────────
+class UserPreferencesOut(BaseModel):
+    max_resume_pages: int
+
+
+class UserPreferencesUpdate(BaseModel):
+    max_resume_pages: int = Field(ge=1, le=2)
 
 
 # ── Tailoring Rules ───────────────────────────────────────────────────

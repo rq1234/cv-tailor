@@ -99,7 +99,7 @@ async def run_tailoring(
         _active_tailoring.add(user_key)
         pipeline_task = asyncio.create_task(
             asyncio.wait_for(
-                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step, manual_selection),
+                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step, manual_selection, selection_mode=body.selection_mode),
                 timeout=_PIPELINE_TIMEOUT_S,
             )
         )
@@ -468,7 +468,7 @@ async def accept_changes(
         if accepted:
             final_cv[exp_id] = accepted
         else:
-            final_cv[exp_id] = {"bullets": exp_diff.get("original_bullets", [])}
+            final_cv[exp_id] = {"bullets": exp_diff.get("suggested_bullets", exp_diff.get("original_bullets", []))}
 
     cv_version.final_cv_json = final_cv
     await db.commit()

@@ -10,7 +10,7 @@ from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 
-from backend.models.tables import Activity, Education, Project, Skill, WorkExperience
+from backend.models.tables import Activity, CvUpload, Education, Project, Skill, WorkExperience
 from backend.services.embedder import embed_text
 
 logger = logging.getLogger(__name__)
@@ -34,6 +34,8 @@ async def select_experiences(
     db: AsyncSession,
     jd_parsed: dict,
     user_id: uuid.UUID,
+    max_pages: int = 1,
+    selection_mode: str = "library",
 ) -> SelectionResult:
     """Select the most relevant experiences from the pool based on parsed JD.
 
@@ -41,7 +43,23 @@ async def select_experiences(
     2. Run cosine similarity against work_experiences.embedding via pgvector
     3. For each variant group, select the best variant based on domain match
     4. Return top 6-8 most relevant experiences
+
+    Args:
+        selection_mode: "library" = all experiences, "latest_cv" = only from most recent upload.
     """
+    # Resolve upload filter for "latest_cv" mode
+    latest_upload_id: uuid.UUID | None = None
+    if selection_mode == "latest_cv":
+        upload_result = await db.execute(
+            select(CvUpload.id)
+            .where(CvUpload.user_id == user_id)
+            .order_by(CvUpload.created_at.desc())
+            .limit(1)
+        )
+        latest_upload_id = upload_result.scalar_one_or_none()
+        if latest_upload_id is None:
+            logger.warning("latest_cv mode selected but no CvUpload found for user %s; falling back to library mode", user_id)
+            selection_mode = "library"
     # Build JD text for embedding
     jd_text_parts = []
     for field in ["required_skills", "nice_to_have_skills", "keywords"]:
@@ -66,14 +84,14 @@ async def select_experiences(
     is_finance = any(kw in domain_context for kw in ("financ", "bank", "investment", "equity", "asset", "wealth", "portfolio"))
 
     if is_tech:
-        # Tech/quant/trading: projects only, strict 1-page
-        project_limit, activity_limit = 3, 0
+        # Tech/quant/trading: projects-heavy; scale up for 2-page
+        project_limit, activity_limit = (5, 1) if max_pages >= 2 else (3, 0)
     elif is_consulting or is_finance:
-        # Consulting/finance/asset management: leadership only, strict 1-page
-        project_limit, activity_limit = 0, 3
+        # Consulting/finance: leadership-heavy; scale up for 2-page
+        project_limit, activity_limit = (2, 5) if max_pages >= 2 else (0, 3)
     else:
-        # Default: projects focused
-        project_limit, activity_limit = 2, 1
+        # Default: projects focused; scale up for 2-page
+        project_limit, activity_limit = (4, 2) if max_pages >= 2 else (2, 1)
 
     logger.info("Domain-aware selection: domain=%r tech=%s consulting=%s finance=%s → projects=%d activities=%d",
                 domain, is_tech, is_consulting, is_finance, project_limit, activity_limit)
@@ -90,19 +108,35 @@ async def select_experiences(
 
     # Search for similar work experiences using pgvector
     # Fetch domain_tags so we can apply a domain-match boost
-    experience_stmt = text("""
-        SELECT id, company, role_title, variant_group_id, domain_tags,
-               1 - (embedding <=> :embedding) as similarity
-        FROM work_experiences
-        WHERE embedding IS NOT NULL
-          AND user_id = :user_id
-        ORDER BY similarity DESC
-        LIMIT 30
-    """).bindparams(bindparam("embedding", type_=Vector))
-    result = await db.execute(
-        experience_stmt,
-        {"embedding": jd_embedding, "user_id": user_id},
-    )
+    if latest_upload_id is not None:
+        experience_stmt = text("""
+            SELECT id, company, role_title, variant_group_id, domain_tags,
+                   1 - (embedding <=> :embedding) as similarity
+            FROM work_experiences
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+              AND upload_source_id = :upload_source_id
+            ORDER BY similarity DESC
+            LIMIT 30
+        """).bindparams(bindparam("embedding", type_=Vector))
+        result = await db.execute(
+            experience_stmt,
+            {"embedding": jd_embedding, "user_id": user_id, "upload_source_id": latest_upload_id},
+        )
+    else:
+        experience_stmt = text("""
+            SELECT id, company, role_title, variant_group_id, domain_tags,
+                   1 - (embedding <=> :embedding) as similarity
+            FROM work_experiences
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+            ORDER BY similarity DESC
+            LIMIT 30
+        """).bindparams(bindparam("embedding", type_=Vector))
+        result = await db.execute(
+            experience_stmt,
+            {"embedding": jd_embedding, "user_id": user_id},
+        )
     rows = result.fetchall()
 
     # Apply domain-tag boost and re-rank
@@ -187,7 +221,8 @@ async def select_experiences(
             reason=f"Matched with {score:.0%} similarity — {company or 'Unknown'}, {role_title or 'Unknown role'}",
         ))
 
-        if len(selected) >= 4:
+        max_work_exp = 6 if max_pages >= 2 else 4
+        if len(selected) >= max_work_exp:
             break
 
     if not selected:
@@ -247,17 +282,31 @@ async def select_experiences(
 
     # Select relevant projects via embedding similarity (domain-aware limit)
     # Fetch extra candidates so we can deduplicate by name/variant_group
-    project_stmt = text("""
-        SELECT id, name, variant_group_id FROM projects
-        WHERE embedding IS NOT NULL
-          AND user_id = :user_id
-        ORDER BY 1 - (embedding <=> :embedding) DESC
-        LIMIT :lim
-    """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
-    proj_result = await db.execute(
-        project_stmt,
-        {"embedding": jd_embedding, "lim": project_limit * 3, "user_id": user_id},
-    )
+    if latest_upload_id is not None:
+        project_stmt = text("""
+            SELECT id, name, variant_group_id FROM projects
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+              AND upload_source_id = :upload_source_id
+            ORDER BY 1 - (embedding <=> :embedding) DESC
+            LIMIT :lim
+        """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
+        proj_result = await db.execute(
+            project_stmt,
+            {"embedding": jd_embedding, "lim": project_limit * 3, "user_id": user_id, "upload_source_id": latest_upload_id},
+        )
+    else:
+        project_stmt = text("""
+            SELECT id, name, variant_group_id FROM projects
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+            ORDER BY 1 - (embedding <=> :embedding) DESC
+            LIMIT :lim
+        """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
+        proj_result = await db.execute(
+            project_stmt,
+            {"embedding": jd_embedding, "lim": project_limit * 3, "user_id": user_id},
+        )
     # Deduplicate projects by name and variant_group_id
     selected_projects: list[str] = []
     seen_proj_names: set[str] = set()
@@ -282,9 +331,12 @@ async def select_experiences(
 
     # If no projects with embeddings, get all up to limit
     if not selected_projects:
+        proj_filter = [Project.user_id == user_id]
+        if latest_upload_id is not None:
+            proj_filter.append(Project.upload_source_id == latest_upload_id)
         proj_all = await db.execute(
             select(Project.id, Project.name)
-            .where(Project.user_id == user_id)
+            .where(*proj_filter)
             .limit(project_limit * 3)
         )
         for row in proj_all.fetchall():
@@ -298,17 +350,31 @@ async def select_experiences(
                 break
 
     # Select relevant activities via embedding similarity (domain-aware limit)
-    activity_stmt = text("""
-        SELECT id, organization, role_title, variant_group_id FROM activities
-        WHERE embedding IS NOT NULL
-          AND user_id = :user_id
-        ORDER BY 1 - (embedding <=> :embedding) DESC
-        LIMIT :lim
-    """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
-    act_result = await db.execute(
-        activity_stmt,
-        {"embedding": jd_embedding, "lim": activity_limit * 3, "user_id": user_id},
-    )
+    if latest_upload_id is not None:
+        activity_stmt = text("""
+            SELECT id, organization, role_title, variant_group_id FROM activities
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+              AND upload_source_id = :upload_source_id
+            ORDER BY 1 - (embedding <=> :embedding) DESC
+            LIMIT :lim
+        """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
+        act_result = await db.execute(
+            activity_stmt,
+            {"embedding": jd_embedding, "lim": activity_limit * 3, "user_id": user_id, "upload_source_id": latest_upload_id},
+        )
+    else:
+        activity_stmt = text("""
+            SELECT id, organization, role_title, variant_group_id FROM activities
+            WHERE embedding IS NOT NULL
+              AND user_id = :user_id
+            ORDER BY 1 - (embedding <=> :embedding) DESC
+            LIMIT :lim
+        """).bindparams(bindparam("embedding", type_=Vector), bindparam("lim"))
+        act_result = await db.execute(
+            activity_stmt,
+            {"embedding": jd_embedding, "lim": activity_limit * 3, "user_id": user_id},
+        )
     # Deduplicate activities by organization+role and variant_group_id
     selected_activities: list[str] = []
     seen_act_keys: set[str] = set()
@@ -331,15 +397,18 @@ async def select_experiences(
 
     # If no activities with embeddings, get all up to limit
     if not selected_activities:
+        act_filter = [Activity.user_id == user_id]
+        if latest_upload_id is not None:
+            act_filter.append(Activity.upload_source_id == latest_upload_id)
         act_all = await db.execute(
-            select(Activity.id).where(Activity.user_id == user_id).limit(activity_limit)
+            select(Activity.id).where(*act_filter).limit(activity_limit)
         )
         selected_activities = [str(row[0]) for row in act_all.fetchall()]
 
-    # ---- 1-page line budget ----
-    # Letter paper with 10-11pt font fits ~34 content lines after header/edu/skills/section-title overhead.
-    # Long bullets (>80 chars) wrap to 2 rendered lines. Strict 1-page: never exceed budget.
-    MAX_RENDERED_LINES = 34
+    # ---- page line budget ----
+    # Letter paper with 10-11pt font fits ~34 content lines per page after header/edu/skills overhead.
+    # Long bullets (>80 chars) wrap to 2 rendered lines.
+    MAX_RENDERED_LINES = 34 * max_pages
 
     from backend.utils import extract_bullet_texts
 
@@ -419,7 +488,7 @@ async def select_experiences(
 
     # Trim from lowest-relevance entries if over budget
     if total_lines > MAX_RENDERED_LINES:
-        logger.info("Over 1-page budget: %d rendered lines > %d. Trimming.", total_lines, MAX_RENDERED_LINES)
+        logger.info("Over %d-page budget: %d rendered lines > %d. Trimming.", max_pages, total_lines, MAX_RENDERED_LINES)
 
         # Trim order depends on role type:
         # Tech/quant → trim activities first (keep projects)

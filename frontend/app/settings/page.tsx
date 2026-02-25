@@ -22,6 +22,10 @@ export default function SettingsPage() {
   const [editText, setEditText] = useState("");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
 
+  const [maxPages, setMaxPages] = useState<1 | 2>(1);
+  const [pagesLoading, setPagesLoading] = useState(true);
+  const [pagesSaving, setPagesSaving] = useState(false);
+
   const fetchRules = useCallback(async () => {
     try {
       const data = await api.get<TailoringRule[]>("/api/rules");
@@ -33,9 +37,34 @@ export default function SettingsPage() {
     }
   }, []);
 
+  const fetchPreferences = useCallback(async () => {
+    try {
+      const data = await api.get<{ max_resume_pages: number }>("/api/settings/preferences");
+      setMaxPages(data.max_resume_pages === 2 ? 2 : 1);
+    } catch {
+      // silently fall back to 1
+    } finally {
+      setPagesLoading(false);
+    }
+  }, []);
+
+  const updateMaxPages = async (pages: 1 | 2) => {
+    setMaxPages(pages);
+    setPagesSaving(true);
+    try {
+      await api.put("/api/settings/preferences", { max_resume_pages: pages });
+    } catch {
+      // revert on failure
+      setMaxPages(pages === 2 ? 1 : 2);
+    } finally {
+      setPagesSaving(false);
+    }
+  };
+
   useEffect(() => {
     fetchRules();
-  }, [fetchRules]);
+    fetchPreferences();
+  }, [fetchRules, fetchPreferences]);
 
   const addRule = async () => {
     if (!newRule.trim()) return;
@@ -90,6 +119,50 @@ export default function SettingsPage() {
   return (
     <div className="max-w-3xl space-y-8">
       <h1 className="text-2xl font-bold">Settings</h1>
+
+      {/* Resume Length */}
+      <section className="space-y-3">
+        <h2 className="text-lg font-semibold">Resume Length</h2>
+        <p className="text-sm text-muted-foreground">
+          Controls how many experiences the AI selects when tailoring your CV.
+        </p>
+
+        {pagesLoading ? (
+          <div className="h-10 w-48 animate-pulse rounded-md bg-muted" />
+        ) : (
+          <div className="space-y-2">
+            <div className="inline-flex rounded-md border overflow-hidden">
+              <button
+                onClick={() => updateMaxPages(1)}
+                disabled={pagesSaving}
+                className={`px-5 py-2 text-sm font-medium transition-colors ${
+                  maxPages === 1
+                    ? "bg-black text-white"
+                    : "bg-white text-foreground hover:bg-muted"
+                }`}
+              >
+                1 Page
+              </button>
+              <button
+                onClick={() => updateMaxPages(2)}
+                disabled={pagesSaving}
+                className={`px-5 py-2 text-sm font-medium border-l transition-colors ${
+                  maxPages === 2
+                    ? "bg-black text-white"
+                    : "bg-white text-foreground hover:bg-muted"
+                }`}
+              >
+                2 Pages
+              </button>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              {maxPages === 1
+                ? "Strict 1-page — AI selects the most relevant experiences to fit."
+                : "Up to 2 pages — AI picks more relevant experiences ranked by fit, not all of them."}
+            </p>
+          </div>
+        )}
+      </section>
 
       {/* Tailoring Rules */}
       <section className="space-y-3">

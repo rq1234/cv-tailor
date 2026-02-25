@@ -22,7 +22,7 @@ const MAX_RETRIES = 3;
 
 export default function ApplyPage() {
   const router = useRouter();
-  const { createApplication, loading } = useApplication();
+  const { createApplication, loading, error: createApplicationError } = useApplication();
   const { setPipeline, setPipelineError, clearPipeline } = useAppStore();
   const { pool, poolLoading, fetchPool } = useExperiencePool();
 
@@ -34,6 +34,7 @@ export default function ApplyPage() {
   const [tailoring, setTailoring] = useState(false);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [pipelineError, setPipelineErrorLocal] = useState<string | null>(null);
+  const [selectionMode, setSelectionMode] = useState<"library" | "latest_cv">("library");
 
   // Abort controller ref — cancelled on unmount to stop any in-flight stream
   const abortRef = useRef<AbortController | null>(null);
@@ -49,6 +50,7 @@ export default function ApplyPage() {
     appId: string,
     selection: PoolSelection,
     retriesLeft: number,
+    mode: "library" | "latest_cv" = "library",
   ): Promise<void> => {
     // Abort any previous stream before starting a new one.
     abortRef.current?.abort();
@@ -63,6 +65,7 @@ export default function ApplyPage() {
         pinned_activities: selection.activity_ids,
         pinned_education: selection.education_ids,
         pinned_skills: selection.skill_ids,
+        selection_mode: mode,
       });
 
       if (controller.signal.aborted) return;
@@ -125,7 +128,7 @@ export default function ApplyPage() {
         await new Promise((resolve) => setTimeout(resolve, waitMs));
         if (!controller.signal.aborted) {
           setPipelineErrorLocal(null);
-          return runStream(appId, selection, retriesLeft - 1);
+          return runStream(appId, selection, retriesLeft - 1, mode);
         }
       } else {
         // 409 means the backend already has a pipeline running for this user.
@@ -165,7 +168,7 @@ export default function ApplyPage() {
     setPipelineErrorLocal(null);
     clearPipeline();
 
-    await runStream(applicationId, selection, MAX_RETRIES);
+    await runStream(applicationId, selection, MAX_RETRIES, selectionMode);
   };
 
   return (
@@ -218,31 +221,69 @@ export default function ApplyPage() {
 
       {/* Step 2: JD Input */}
       {step === 2 && (
-        <JdInputStep
-          jdText={jdText}
-          setJdText={setJdText}
-          onBack={() => setStep(1)}
-          onNext={handleJdNext}
-          nextLabel={loading ? "Creating..." : "Next"}
-          nextLoading={loading}
-        />
+        <div className="space-y-3">
+          {createApplicationError && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3">
+              <p className="text-sm text-red-700">{createApplicationError}</p>
+            </div>
+          )}
+          <JdInputStep
+            jdText={jdText}
+            setJdText={setJdText}
+            onBack={() => setStep(1)}
+            onNext={handleJdNext}
+            nextLabel={loading ? "Creating..." : "Next"}
+            nextLoading={loading}
+          />
+        </div>
       )}
 
       {/* Step 3: Select Experiences */}
       {step === 3 && (
-        poolLoading || !pool ? (
-          <div className="flex flex-col items-center justify-center py-16 gap-3">
-            <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
-            <p className="text-sm text-muted-foreground">Loading your experience pool...</p>
+        <div className="space-y-4">
+          {/* Source mode toggle */}
+          <div>
+            <p className="text-sm font-medium mb-2">Source experiences from</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSelectionMode("library")}
+                className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                  selectionMode === "library"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-muted-foreground/30 bg-background text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                Experience Library
+                <span className="block text-xs font-normal opacity-75 mt-0.5">Best picks from all your history</span>
+              </button>
+              <button
+                onClick={() => setSelectionMode("latest_cv")}
+                className={`flex-1 rounded-md border px-4 py-2 text-sm font-medium transition-colors ${
+                  selectionMode === "latest_cv"
+                    ? "border-primary bg-primary text-primary-foreground"
+                    : "border-muted-foreground/30 bg-background text-muted-foreground hover:border-primary/50"
+                }`}
+              >
+                Latest CV Only
+                <span className="block text-xs font-normal opacity-75 mt-0.5">Only experiences from your last upload</span>
+              </button>
+            </div>
           </div>
-        ) : (
-          <ExperienceSelectStep
-            pool={pool}
-            onBack={() => setStep(2)}
-            onNext={handleSelectionNext}
-            nextLoading={tailoring}
-          />
-        )
+
+          {poolLoading || !pool ? (
+            <div className="flex flex-col items-center justify-center py-16 gap-3">
+              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <p className="text-sm text-muted-foreground">Loading your experience pool...</p>
+            </div>
+          ) : (
+            <ExperienceSelectStep
+              pool={pool}
+              onBack={() => setStep(2)}
+              onNext={handleSelectionNext}
+              nextLoading={tailoring}
+            />
+          )}
+        </div>
       )}
 
       {/* Step 4: Pipeline Progress */}

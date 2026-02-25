@@ -9,6 +9,43 @@ import {
   getDiffMeta,
 } from "./types";
 
+// Matches: 50%, $3.2B, £1.4m, 1,400, 500k, 3.2x, numbers like 1400
+const METRIC_RE = /(\$|£|€)?[\d,]+\.?\d*(%|[xX]|[kKmMbBtT]n?)?(?:\+)?|\d+\.?\d*(%|[xX])/g;
+
+function extractMetrics(text: string): string[] {
+  return Array.from(new Set(text.match(METRIC_RE) ?? []));
+}
+
+function droppedMetrics(original: string, suggested: string): string[] {
+  const inOriginal = extractMetrics(original);
+  const sugLower = suggested.toLowerCase();
+  return inOriginal.filter((m) => !sugLower.includes(m.toLowerCase()));
+}
+
+function HighlightedText({ text }: { text: string }) {
+  const parts: { str: string; highlight: boolean }[] = [];
+  let last = 0;
+  for (const m of text.matchAll(METRIC_RE)) {
+    if (m.index! > last) parts.push({ str: text.slice(last, m.index), highlight: false });
+    parts.push({ str: m[0], highlight: true });
+    last = m.index! + m[0].length;
+  }
+  if (last < text.length) parts.push({ str: text.slice(last), highlight: false });
+  return (
+    <>
+      {parts.map((p, i) =>
+        p.highlight ? (
+          <mark key={i} className="bg-amber-100 text-amber-900 rounded px-0.5 font-medium not-italic">
+            {p.str}
+          </mark>
+        ) : (
+          <span key={i}>{p.str}</span>
+        )
+      )}
+    </>
+  );
+}
+
 interface DiffViewProps {
   result: TailorResult;
   experienceDiffs: [string, ExperienceDiff][];
@@ -152,14 +189,10 @@ export default function DiffView({
                       Confidence: {(diff.confidence * 100).toFixed(0)}%
                     </span>
                   </div>
-                  {diff.requirements_addressed && diff.requirements_addressed.length > 0 && (
-                    <div className="mt-1 flex flex-wrap gap-1">
-                      {diff.requirements_addressed.map((req, i) => (
-                        <span key={i} className="inline-flex items-center rounded-full bg-green-50 px-2 py-0.5 text-xs text-green-700">
-                          {req}
-                        </span>
-                      ))}
-                    </div>
+                  {diff.coaching_note && (
+                    <p className="mt-1.5 text-xs text-muted-foreground italic">
+                      💡 {diff.coaching_note}
+                    </p>
                   )}
                   {diff.changes_made.length > 0 && (
                     <div className="mt-1 flex flex-wrap gap-1">
@@ -183,12 +216,16 @@ export default function DiffView({
                     const displayText = bulletState?.editedText ? bulletState.editedText : text;
                     const isChanged = original !== displayText;
 
+                    const dropped = droppedMetrics(original, text);
+
                     return (
                       <div key={idx} className="grid grid-cols-2 gap-0">
                         {/* Original */}
                         <div className="border-r p-3">
                           <div className="text-xs font-medium text-muted-foreground mb-1">Original</div>
-                          <p className="text-sm">{original || "(no original)"}</p>
+                          <p className="text-sm">
+                            {original ? <HighlightedText text={original} /> : "(no original)"}
+                          </p>
                         </div>
 
                         {/* Suggested */}
@@ -272,6 +309,18 @@ export default function DiffView({
                               }`}
                             >
                               {displayText}
+                            </p>
+                          )}
+                          {dropped.length > 0 && bulletState?.decision !== "reject" && (
+                            <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
+                              <span>⚠</span>
+                              <span>
+                                Not in suggestion:{" "}
+                                {dropped.map((m, i) => (
+                                  <span key={i} className="font-semibold">{m}{i < dropped.length - 1 ? ", " : ""}</span>
+                                ))}
+                                {" "}— consider adding back when editing
+                              </span>
                             </p>
                           )}
                         </div>

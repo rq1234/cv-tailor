@@ -56,6 +56,7 @@ class CvProfile(Base):
     name_confidence: Mapped[float | None] = mapped_column(Float)
     contact_confidence: Mapped[float | None] = mapped_column(Float)
     unstructured_extras: Mapped[dict | None] = mapped_column(JSONB)
+    max_resume_pages: Mapped[int] = mapped_column(Integer, default=1)
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
 
 

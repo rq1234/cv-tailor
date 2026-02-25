@@ -30,6 +30,21 @@ def _format_date(d: date | str | None) -> str:
     return str(d)
 
 
+def _clean_location(location: str | None) -> str:
+    """Strip anything after the first pipe.
+
+    The CV parser sometimes puts domain tags or skill lists in the location
+    field (e.g. 'London, UK | Investment Banking | Python'). Only the city/
+    country portion belongs in the LaTeX heading.
+    """
+    if not location:
+        return ""
+    # Keep only the part before the first pipe
+    location = location.split("|")[0].strip()
+    # Trim trailing punctuation left by the split
+    return location.rstrip(" ,;")
+
+
 async def _build_cv_context(
     db: AsyncSession,
     cv_version: CvVersion,
@@ -49,6 +64,10 @@ async def _build_cv_context(
             "portfolio_url": profile_row.portfolio_url,
             "summary": profile_row.summary,
         }
+
+    max_pages = getattr(profile_row, "max_resume_pages", 1) if profile_row else 1
+    bullet_cap_exp = 5 if max_pages >= 2 else 3
+    bullet_cap_act = 4 if max_pages >= 2 else 2
 
     # Work experiences — sorted by date descending (most recent first)
     experiences = []
@@ -81,8 +100,7 @@ async def _build_cv_context(
 
             if isinstance(bullets, list):
                 bullets = _normalize_bullets(bullets)
-            # Cap bullets to 3 max for single-page fit
-            bullets = bullets[:3] if isinstance(bullets, list) else []
+            bullets = bullets[:bullet_cap_exp] if isinstance(bullets, list) else []
 
             experiences.append({
                 "company": exp.company,
@@ -141,12 +159,12 @@ async def _build_cv_context(
                 elif isinstance(edu.modules, str):
                     modules = [m.strip() for m in edu.modules.split(",") if m.strip()]
 
-            # Cap achievements to 2 max for single-page fit
             if isinstance(achievements, list):
                 achievements = [str(a).strip() for a in achievements if str(a).strip()]
             if isinstance(modules, list):
                 modules = [str(m).strip() for m in modules if str(m).strip()]
-            achievements = achievements[:2] if isinstance(achievements, list) else []
+            achievements_cap = 5 if max_pages >= 2 else 3
+            achievements = achievements[:achievements_cap] if isinstance(achievements, list) else []
             # Cap modules to 4 items, but they'll be on ONE line
             modules = modules[:4] if isinstance(modules, list) else []
 
@@ -236,8 +254,7 @@ async def _build_cv_context(
 
             if isinstance(bullets, list):
                 bullets = _normalize_bullets(bullets)
-            # Cap bullets to 2 max for single-page fit
-            bullets = bullets[:2] if isinstance(bullets, list) else []
+            bullets = bullets[:bullet_cap_act] if isinstance(bullets, list) else []
 
             activities.append({
                 "organization": act.organization,
@@ -297,7 +314,7 @@ async def _build_cv_context(
         for cat, items in list(skills_by_category.items()):
             skills_by_category[cat] = _dedupe_preserve_order(items)
 
-    limits = _compute_page_limits(bool(projects), bool(activities))
+    limits = _compute_page_limits(bool(projects), bool(activities), max_pages)
     return {
         "profile": profile,
         "experiences": experiences[: limits["exp"]],
@@ -394,22 +411,32 @@ def _dedupe_preserve_order(items: list[str]) -> list[str]:
     return result
 
 
-def _compute_page_limits(has_projects: bool, has_activities: bool) -> dict:
-    """Return per-section item caps so the CV fits one page regardless of content mix.
+def _compute_page_limits(has_projects: bool, has_activities: bool, max_pages: int = 1) -> dict:
+    """Return per-section item caps so the CV fits within the target page count.
 
-    The Jake Gutierrez template at 11pt holds roughly:
+    1-page limits (Jake Gutierrez template at 11pt):
       - Full profile (exp + proj + act): 4 exp, 3 proj, 2 act
       - IB/Finance (exp + act, no proj):  5 exp, 3 act
       - Tech (exp + proj, no act):        4 exp, 4 proj
       - Exp-only (no proj, no act):       6 exp
+
+    2-page limits are approximately doubled.
     """
+    if max_pages >= 2:
+        if has_projects and has_activities:
+            return {"exp": 8, "proj": 6, "act": 4}
+        if has_projects and not has_activities:
+            return {"exp": 8, "proj": 8, "act": 0}
+        if not has_projects and has_activities:
+            return {"exp": 10, "proj": 0, "act": 6}
+        return {"exp": 12, "proj": 0, "act": 0}
+    # 1-page limits
     if has_projects and has_activities:
         return {"exp": 4, "proj": 3, "act": 2}
     if has_projects and not has_activities:
         return {"exp": 4, "proj": 4, "act": 0}
     if not has_projects and has_activities:
         return {"exp": 5, "proj": 0, "act": 3}
-    # No projects, no activities
     return {"exp": 6, "proj": 0, "act": 0}
 
 
@@ -586,7 +613,7 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
             degree = _escape_latex(edu.get("degree", "Degree"))
             institution = _escape_latex(edu.get("institution", "Institution"))
             dates = _date_range(edu.get("date_start", ""), edu.get("date_end", ""))
-            location_str = _escape_latex(edu.get("location", ""))
+            location_str = _escape_latex(_clean_location(edu.get("location", "")))
 
             latex_lines.append(
                 f"    \\resumeSubheading{{{institution}}}{{{dates}}}{{{degree}}}{{{location_str}}}"
@@ -619,7 +646,7 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
             role = _escape_latex(exp.get("role_title", "Role"))
             company = _escape_latex(exp.get("company", "Company"))
             dates = _date_range(exp.get("date_start", ""), exp.get("date_end", ""))
-            location_str = _escape_latex(exp.get("location", ""))
+            location_str = _escape_latex(_clean_location(exp.get("location", "")))
 
             latex_lines.append(f"    \\resumeSubheading{{{company}}}{{{dates}}}{{{role}}}{{{location_str}}}")
 
@@ -649,7 +676,7 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
             desc = proj.get("description", "")
 
             if skill_tags:
-                tech_str = _escape_latex(", ".join(skill_tags))
+                tech_str = _escape_latex(", ".join(skill_tags[:4]))
                 title = f"\\textbf{{{name_str}}} $|$ \\emph{{{tech_str}}}"
             else:
                 title = f"\\textbf{{{name_str}}}"
@@ -678,7 +705,7 @@ async def generate_latex(db: AsyncSession, cv_version: CvVersion, user_id: uuid.
             role = _escape_latex(act.get("role_title", "Role"))
             org = _escape_latex(act.get("organization", "Organization"))
             dates = _date_range(act.get("date_start", ""), act.get("date_end", ""))
-            location_str = _escape_latex(act.get("location", ""))
+            location_str = _escape_latex(_clean_location(act.get("location", "")))
 
             latex_lines.append(f"    \\resumeSubheading{{{role}}}{{{dates}}}{{{org}}}{{{location_str}}}")
 

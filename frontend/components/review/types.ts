@@ -11,6 +11,7 @@ export interface ExperienceDiff {
   changes_made: string[];
   confidence: number;
   requirements_addressed?: string[];
+  coaching_note?: string;
 }
 
 export interface AtsWarning {

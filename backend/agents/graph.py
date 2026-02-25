@@ -46,6 +46,8 @@ class PipelineState(BaseModel):
     cv_version_id: str = ""
     current_step: str = "pending"
     error: str | None = None
+    max_pages: int = 1
+    selection_mode: str = "library"  # "library" | "latest_cv"
 
 
 def _orm_to_dict(obj, fields: list[str]) -> dict:
@@ -91,7 +93,7 @@ async def select_experiences_node(state: PipelineState, db: AsyncSession) -> Pip
         return state
     try:
         user_uuid = uuid.UUID(state.user_id)
-        selection = await select_experiences(db, state.jd_parsed, user_uuid)
+        selection = await select_experiences(db, state.jd_parsed, user_uuid, max_pages=state.max_pages, selection_mode=state.selection_mode)
         state.selection = selection.model_dump()
     except Exception as e:
         logger.exception("Experience selection failed for application %s", state.application_id)
@@ -300,6 +302,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 "changes_made": te["changes_made"],
                 "confidence": te["confidence"],
                 "requirements_addressed": te.get("requirements_addressed", []),
+                "coaching_note": te.get("coaching_note", ""),
             }
 
         # Add tailored projects to diff_json
@@ -311,6 +314,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 "changes_made": tp["changes_made"],
                 "confidence": tp["confidence"],
                 "requirements_addressed": tp.get("requirements_addressed", []),
+                "coaching_note": tp.get("coaching_note", ""),
             }
 
         # Add tailored activities to diff_json
@@ -322,6 +326,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 "changes_made": ta["changes_made"],
                 "confidence": ta["confidence"],
                 "requirements_addressed": ta.get("requirements_addressed", []),
+                "coaching_note": ta.get("coaching_note", ""),
             }
 
         selection = state.selection
@@ -376,6 +381,7 @@ async def run_pipeline(
     user_id: uuid.UUID,
     on_step: Any | None = None,
     manual_selection: dict | None = None,
+    selection_mode: str = "library",
 ) -> PipelineState:
     """Run the full tailoring pipeline.
 
@@ -387,8 +393,22 @@ async def run_pipeline(
         manual_selection: If provided, skip AI experience selection and use these IDs instead.
             Expected keys: selected_experiences (list of {"id": str}), selected_projects,
             selected_activities, selected_education, selected_skills (lists of UUID strings).
+        selection_mode: "library" = best across all uploads, "latest_cv" = only from most recent upload.
     """
-    state = PipelineState(application_id=application_id, jd_raw=jd_raw, user_id=str(user_id))
+    # Read user preference for resume page count
+    pref_result = await db.execute(
+        select(CvProfile).where(CvProfile.user_id == user_id)
+    )
+    profile = pref_result.scalar_one_or_none()
+    max_pages = profile.max_resume_pages if profile else 1
+
+    state = PipelineState(
+        application_id=application_id,
+        jd_raw=jd_raw,
+        user_id=str(user_id),
+        max_pages=max_pages,
+        selection_mode=selection_mode,
+    )
 
     if manual_selection is not None:
         state.selection = manual_selection

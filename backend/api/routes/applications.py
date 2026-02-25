@@ -6,13 +6,13 @@ import uuid
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile
 from pydantic import BaseModel
-from sqlalchemy import select
+from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
 from backend.api.db_helpers import delete_or_404, get_or_404
 from backend.models.database import get_db
-from backend.models.tables import Application
+from backend.models.tables import Application, CvVersion
 from backend.schemas.pydantic import ApplicationCreate, ApplicationOut, ApplicationUpdate
 from backend.services.screenshot_ocr import extract_text_from_screenshot
 
@@ -20,6 +20,7 @@ router = APIRouter(prefix="/api/applications", tags=["applications"])
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
+MAX_APPLICATIONS_PER_USER = 20
 
 
 @router.get("", response_model=list[ApplicationOut])
@@ -43,6 +44,16 @@ async def create_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Create a new job application with raw JD."""
+    count_result = await db.execute(
+        select(func.count(Application.id)).where(Application.user_id == user_id)
+    )
+    application_count = count_result.scalar_one()
+    if application_count >= MAX_APPLICATIONS_PER_USER:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Application limit reached ({MAX_APPLICATIONS_PER_USER}). Delete an old application to create a new one.",
+        )
+
     app = Application(
         user_id=user_id,
         company_name=body.company_name,
@@ -119,4 +130,10 @@ async def delete_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Delete an application and all associated data."""
+    await db.execute(
+        delete(CvVersion).where(
+            CvVersion.user_id == user_id,
+            CvVersion.application_id == application_id,
+        )
+    )
     return await delete_or_404(db, Application, application_id, user_id, "Application not found")

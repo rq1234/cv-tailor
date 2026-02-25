@@ -227,6 +227,16 @@ class TailoredExperience(BaseModel):
         default_factory=list,
         description="Which JD requirements this experience now addresses",
     )
+    coaching_note: str = Field(
+        default="",
+        description=(
+            "One short sentence of editing guidance for the user. "
+            "Strong match: confirm and say what to preserve, e.g. 'Strong match — keep the deal sizes and client names in every bullet.' "
+            "Partial match: say how to strengthen, e.g. 'Partial match — frame the Python work toward data pipeline requirements.' "
+            "Gap: be honest, e.g. 'Gap area — JD wants stakeholder management; surface any cross-team work if truthful.' "
+            "Max 100 characters. No filler."
+        ),
+    )
 
 
 class TailorOutput(BaseModel):
@@ -242,6 +252,16 @@ class TailoredProject(BaseModel):
     requirements_addressed: list[str] = Field(
         default_factory=list,
         description="Which JD requirements this project now addresses",
+    )
+    coaching_note: str = Field(
+        default="",
+        description=(
+            "One short sentence of editing guidance for the user. "
+            "Strong match: confirm and say what to preserve. "
+            "Partial match: say how to strengthen it. "
+            "Gap: be honest about what's missing. "
+            "Max 100 characters. No filler."
+        ),
     )
 
 
@@ -505,6 +525,13 @@ Tailoring is NOT paraphrasing or shortening. Tailoring means:
 - ACCEPTABLE: 100-200 characters. Longer bullets that preserve all details are ALWAYS better than shorter bullets that lost information.
 - NEVER sacrifice a technology name, metric, scope, or achievement to shorten a bullet.
 - If a bullet must be shortened, cut filler words ("utilized"→"used", "in order to"→"to", "leveraged"→"used") — NEVER cut named technologies, numbers, or outcomes.
+
+## coaching_note
+Write one short, honest, action-oriented sentence for the user who will review your suggestions.
+- Strong match (confidence ≥ 0.85): confirm it and say what to preserve. e.g. "Strong match — keep the deal sizes and client names in every bullet."
+- Partial match (0.65–0.84): say how to strengthen. e.g. "Partial match — frame the Python work toward data pipeline requirements."
+- Weak match (< 0.65): be honest. e.g. "Gap area — JD wants stakeholder management; surface any cross-team work if truthful."
+- Max 100 characters. No filler phrases. Write it directly to the user (no "Note:" prefix).
 
 ## Examples: Paraphrasing vs. Real Tailoring
 These examples show the difference between useless paraphrasing and meaningful tailoring.
@@ -803,6 +830,13 @@ NEVER append filler like "showcasing [skill]", "demonstrating [skill]", "highlig
 - Longer bullets that preserve all details are ALWAYS better than shorter bullets that lost information.
 - NEVER sacrifice a technology name, metric, achievement, or scope to shorten a bullet.
 - Cut filler words first ("utilized"→"used", "in order to"→"to"), NEVER named technologies, numbers, or outcomes.
+
+## coaching_note
+Write one short, honest sentence for the user reviewing your suggestions.
+- Strong match: confirm it and say what to preserve. e.g. "Strong match — keep the tech stack and metrics in every bullet."
+- Partial match: say how to strengthen. e.g. "Partial match — lean into the ML angle to align with the JD."
+- Weak match: be honest. e.g. "Gap area — JD wants production systems experience; highlight any deployed work."
+- Max 100 characters. No filler. Write directly to the user.
 
 ## Examples: Paraphrasing vs. Real Tailoring
 ### Example 1 — JD emphasizes "machine learning" and "production systems"
