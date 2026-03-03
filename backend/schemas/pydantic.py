@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
@@ -149,6 +150,16 @@ class ActivityUpdate(BaseModel):
     skill_tags: list[str] | None = None
 
 
+class ProjectUpdate(BaseModel):
+    name: str | None = None
+    description: str | None = None
+    bullets: list | dict | None = None
+    date_start: date | None = None
+    date_end: date | None = None
+    domain_tags: list[str] | None = None
+    skill_tags: list[str] | None = None
+
+
 class SkillOut(BaseModel):
     model_config = _ORM_CONFIG
     id: uuid.UUID
@@ -185,11 +196,22 @@ class ApplicationCreate(BaseModel):
     company_name: str = Field(max_length=200)
     role_title: str | None = Field(None, max_length=200)
     jd_raw: str = Field(..., min_length=1, max_length=50_000)
-    jd_source: str = "paste"
+    jd_source: Literal["paste", "screenshot", "url"] = "paste"
+    jd_url: str | None = Field(None, max_length=2000)
+
+    @field_validator("jd_url")
+    @classmethod
+    def validate_jd_url_scheme(cls, v: str | None) -> str | None:
+        if v is None:
+            return v
+        if not v.startswith(("http://", "https://")):
+            raise ValueError("jd_url must start with http:// or https://")
+        return v
 
 
 class ApplicationUpdate(BaseModel):
     outcome: str | None = Field(None)
+    notes: str | None = Field(None, max_length=5000)
 
 
 class ApplicationOut(BaseModel):
@@ -200,9 +222,20 @@ class ApplicationOut(BaseModel):
     jd_raw: str
     jd_parsed: dict | None
     jd_source: str | None
+    jd_url: str | None
+    notes: str | None
     status: str
     outcome: str | None
     created_at: datetime
+
+
+class PipelineStatusOut(BaseModel):
+    """Returned by GET /api/tailor/status/{application_id}."""
+    model_config = _ORM_CONFIG
+    status: str  # Application.status (draft / tailoring / review / complete)
+    pipeline_error: str | None
+    pipeline_started_at: datetime | None
+    cv_version_id: uuid.UUID | None  # Latest CvVersion id if one exists
 
 
 # ── Tailoring ──────────────────────────────────────────────────────────
@@ -220,6 +253,24 @@ class RegenerateBulletRequest(BaseModel):
     application_id: uuid.UUID
     experience_id: str  # key in diff_json (UUID string)
     bullet_index: int
+    hint: str | None = Field(None, max_length=500)
+    rejected_variants: list[str] | None = None
+
+    @field_validator("experience_id")
+    @classmethod
+    def validate_experience_id(cls, v: str) -> str:
+        try:
+            uuid.UUID(v)
+        except ValueError:
+            raise ValueError("experience_id must be a valid UUID string")
+        return v
+
+    @field_validator("rejected_variants")
+    @classmethod
+    def cap_rejected_variants(cls, v: list[str] | None) -> list[str] | None:
+        if v is None:
+            return v
+        return [item[:500] for item in v[:10]]
 
 
 class BulletDiff(BaseModel):

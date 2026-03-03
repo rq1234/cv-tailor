@@ -88,18 +88,48 @@ Output quality checklist — before returning verify:
 
 
 # ---------------------------------------------------------------------------
+# LinkedIn export detection
+# ---------------------------------------------------------------------------
+
+_LINKEDIN_HINTS = """\
+
+NOTE: This document appears to be a LinkedIn PDF export. Apply these extra rules:
+- The "Top Skills" section is a flat list — extract every item as a skill (category: "technical" or "tool").
+- The "Contact" section contains the candidate's email, phone, and LinkedIn URL — extract them into profile fields.
+- Experience descriptions are often paragraphs rather than bullet points. Split each paragraph on sentence
+  boundaries and treat each sentence as a separate bullet point.
+- Sections may be titled "Experience", "Education", "Certifications", "Volunteer Experience", "Languages" —
+  map these to the standard categories as documented above.
+- Skills listed under "Skills" or "Endorsements" should all be captured.
+"""
+
+
+def _is_linkedin_export(raw_text: str) -> bool:
+    """Detect whether the raw text looks like a LinkedIn PDF export."""
+    text_lower = raw_text.lower()
+    has_linkedin_domain = "linkedin.com" in text_lower
+    has_linkedin_section = "top skills" in text_lower or (
+        "contact" in text_lower and "linkedin" in text_lower
+    )
+    return has_linkedin_domain or has_linkedin_section
+
+
+# ---------------------------------------------------------------------------
 # Internal OpenAI caller — retry decorator lives here only
 # ---------------------------------------------------------------------------
 
 @retry_openai()
-async def _call_openai_parse(raw_text: str) -> StructuredCvParse:
+async def _call_openai_parse(raw_text: str, extra_hint: str = "") -> StructuredCvParse:
     client = get_openai_client()
     settings = get_settings()
+    user_content = f"Parse this CV:\n\n{raw_text}"
+    if extra_hint:
+        user_content += f"\n\n{extra_hint}"
     response = await client.beta.chat.completions.parse(
         model=settings.model_name,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": f"Parse this CV:\n\n{raw_text}"},
+            {"role": "user", "content": user_content},
         ],
         response_format=StructuredCvParse,
         temperature=settings.temp_parsing,
@@ -144,7 +174,8 @@ async def structure_cv_text(
             logger.warning("cv_parse_cache read failed — falling back to OpenAI", exc_info=True)
 
     # ── OpenAI call ─────────────────────────────────────────────────────────
-    result = await _call_openai_parse(raw_text)
+    extra_hint = _LINKEDIN_HINTS if _is_linkedin_export(raw_text) else ""
+    result = await _call_openai_parse(raw_text, extra_hint=extra_hint)
 
     # ── Cache write (non-fatal) ──────────────────────────────────────────────
     if db is not None:

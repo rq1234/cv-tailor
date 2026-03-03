@@ -40,7 +40,7 @@ SYSTEM_PROMPT = """\
 You are a job description parser specializing in ATS keyword extraction. Given a raw job description, extract structured information optimized for resume tailoring.
 
 Rules:
-- required_skills: Skills explicitly listed as required or mandatory.
+- required_skills: Skills explicitly listed as required or mandatory. For narrative JDs with no explicit requirements section, infer required skills from implied technical themes and project descriptions (e.g. if "low-latency trading engine" is mentioned, infer "C++", "low-latency systems", "performance optimisation"; if "FPGA" is mentioned, infer "hardware programming", "FPGA"; if "distributed ledger" is mentioned, infer "DLT", "blockchain").
 - nice_to_have_skills: Skills listed as preferred, nice-to-have, or bonus.
 - tools_and_technologies: Every specific tool, platform, programming language, framework, or software mentioned. Use the EXACT phrasing from the JD (e.g. "Microsoft Excel" not just "Excel", "Power BI" not "PowerBI").
 - key_responsibilities: The 5-8 most important duties/responsibilities. Phrase as concise action statements.

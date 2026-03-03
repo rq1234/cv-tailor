@@ -15,6 +15,7 @@ export function useApplication() {
       role_title?: string;
       jd_raw: string;
       jd_source?: string;
+      jd_url?: string;
     }) => {
       setLoading(true);
       setError(null);

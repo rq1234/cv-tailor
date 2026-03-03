@@ -162,6 +162,30 @@ export const api = {
     return { blob, filename };
   },
 
+  /** POST with a JSON body and download the response as a file (for PDF/DOCX). */
+  downloadFilePost: async (
+    path: string,
+    body?: unknown,
+  ): Promise<{ blob: Blob; filename: string }> => {
+    const authHeaders = await getAuthHeaders();
+    const res = await fetch(`${API_URL}${path}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json", ...authHeaders },
+      body: body ? JSON.stringify(body) : undefined,
+    });
+
+    if (!res.ok) {
+      const error = await res.json().catch(() => ({ detail: res.statusText }));
+      throw new ApiError(error.detail || `Download failed: ${res.status}`, res.status);
+    }
+
+    const blob = await res.blob();
+    const disposition = res.headers.get("Content-Disposition") || "";
+    const match = disposition.match(/filename="([^"]+)"/);
+    const filename = match?.[1] || "download";
+    return { blob, filename };
+  },
+
   /** Open an SSE stream. Returns the raw Response for manual reading. */
   stream: async (path: string, body?: unknown): Promise<Response> => {
     const authHeaders = await getAuthHeaders();

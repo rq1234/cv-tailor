@@ -1,5 +1,5 @@
 import uuid
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 
 from pgvector.sqlalchemy import Vector
 from sqlalchemy import (
@@ -30,7 +30,7 @@ class CvUpload(Base):
     raw_text_quality: Mapped[float | None] = mapped_column(Float)
     parsing_status: Mapped[str] = mapped_column(Text, default="pending")
     parsing_notes: Mapped[str | None] = mapped_column(Text)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         CheckConstraint("file_type IN ('pdf', 'docx', 'paste')", name="ck_cv_uploads_file_type"),
@@ -57,7 +57,7 @@ class CvProfile(Base):
     contact_confidence: Mapped[float | None] = mapped_column(Float)
     unstructured_extras: Mapped[dict | None] = mapped_column(JSONB)
     max_resume_pages: Mapped[int] = mapped_column(Integer, default=1)
-    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class WorkExperience(Base):
@@ -227,7 +227,12 @@ class Application(Base):
     status: Mapped[str] = mapped_column(Text, default="draft")
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     include_report: Mapped[bool] = mapped_column(Boolean, default=False)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    jd_url: Mapped[str | None] = mapped_column(Text, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pipeline_started_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    pipeline_error: Mapped[str | None] = mapped_column(Text, nullable=True)
+    pipeline_selection: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     __table_args__ = (
         CheckConstraint("jd_source IN ('paste', 'screenshot', 'url')", name="ck_applications_jd_source"),
@@ -263,7 +268,10 @@ class CvVersion(Base):
     docx_path: Mapped[str | None] = mapped_column(Text)
     ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
     ats_warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    baseline_ats_score: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    baseline_ats_warnings: Mapped[list | None] = mapped_column(JSONB, nullable=True)
+    gap_analysis: Mapped[dict | None] = mapped_column(JSONB, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
 class TailoringRule(Base):
@@ -273,4 +281,4 @@ class TailoringRule(Base):
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     rule_text: Mapped[str] = mapped_column(Text, nullable=False)
     is_active: Mapped[bool] = mapped_column(Boolean, default=True)
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))

@@ -9,6 +9,7 @@ import { useExperiencePool } from "@/hooks/useExperiencePool";
 import JdInputStep from "@/components/apply/JdInputStep";
 import PipelineProgress from "@/components/apply/PipelineProgress";
 import ExperienceSelectStep, { type PoolSelection } from "@/components/apply/ExperienceSelectStep";
+import type { PipelineStatus } from "@/lib/schemas";
 
 interface PipelineStep {
   step: string;
@@ -29,6 +30,8 @@ export default function ApplyPage() {
   const [step, setStep] = useState(1);
   const [companyName, setCompanyName] = useState("");
   const [roleTitle, setRoleTitle] = useState("");
+  const [jdUrl, setJdUrl] = useState("");
+  const [jdSource, setJdSource] = useState<"paste" | "screenshot" | "url">("paste");
   const [jdText, setJdText] = useState("");
   const [applicationId, setApplicationId] = useState<string | null>(null);
   const [tailoring, setTailoring] = useState(false);
@@ -52,7 +55,6 @@ export default function ApplyPage() {
     retriesLeft: number,
     mode: "library" | "latest_cv" = "library",
   ): Promise<void> => {
-    // Abort any previous stream before starting a new one.
     abortRef.current?.abort();
     const controller = new AbortController();
     abortRef.current = controller;
@@ -120,7 +122,6 @@ export default function ApplyPage() {
     } catch (err) {
       if (controller.signal.aborted) return;
 
-      // Retry on network errors with exponential backoff
       if (retriesLeft > 0) {
         const attempt = MAX_RETRIES - retriesLeft + 1;
         const waitMs = 1_000 * 2 ** (attempt - 1);
@@ -131,39 +132,73 @@ export default function ApplyPage() {
           return runStream(appId, selection, retriesLeft - 1, mode);
         }
       } else {
-        // 409 means the backend already has a pipeline running for this user.
         const is409 = err instanceof ApiError && err.status === 409;
-        const errMsg = is409
-          ? "A tailoring job is already running. Please wait for it to finish."
-          : err instanceof Error ? err.message : "Tailoring failed";
-        setPipelineErrorLocal(errMsg);
-        setPipelineError(errMsg);
+        if (is409 && appId) {
+          try {
+            const status = await api.get<PipelineStatus>(`/api/tailor/status/${appId}`);
+            if (status.cv_version_id) {
+              clearPipeline();
+              setTailoring(false);
+              router.push(`/review/${appId}`);
+              return;
+            }
+            if (status.pipeline_started_at) {
+              setPipelineErrorLocal("A tailoring job is already running. Please wait for it to finish, then visit your Applications page to view results.");
+            } else {
+              setPipelineErrorLocal(status.pipeline_error || "Tailoring is already running. Please wait.");
+            }
+          } catch {
+            setPipelineErrorLocal("A tailoring job is already running. Please wait for it to finish.");
+          }
+        } else if (appId) {
+          try {
+            const status = await api.get<PipelineStatus>(`/api/tailor/status/${appId}`);
+            if (status.cv_version_id) {
+              clearPipeline();
+              setTailoring(false);
+              router.push(`/review/${appId}`);
+              return;
+            }
+            const errMsg = status.pipeline_error || (err instanceof Error ? err.message : "Tailoring failed");
+            setPipelineErrorLocal(errMsg);
+            setPipelineError(errMsg);
+          } catch {
+            const errMsg = err instanceof Error ? err.message : "Tailoring failed";
+            setPipelineErrorLocal(errMsg);
+            setPipelineError(errMsg);
+          }
+        } else {
+          const errMsg = err instanceof Error ? err.message : "Tailoring failed";
+          setPipelineErrorLocal(errMsg);
+          setPipelineError(errMsg);
+        }
         setTailoring(false);
       }
     }
   };
 
-  // Step 2 → 3: create application and fetch pool for selection
+  // Step 1 → 2: create application and fetch pool for selection
   const handleJdNext = async () => {
     const app = await createApplication({
       company_name: companyName,
       role_title: roleTitle || undefined,
       jd_raw: jdText,
-      jd_source: "paste",
+      jd_source: jdSource,
+      jd_url: jdUrl.trim() || undefined,
     });
     if (!app) return;
 
     setApplicationId(app.id);
     await fetchPool();
-    setStep(3);
+    setStep(2);
   };
 
-  // Step 3 → 4: start pipeline with user's selection
+  // Step 2 → 3: start pipeline with user's selection
   const handleSelectionNext = async (selection: PoolSelection) => {
     if (!applicationId) return;
 
     setTailoring(true);
-    setStep(4);
+    setStep(3);
     setPipelineSteps([]);
     setPipelineErrorLocal(null);
     clearPipeline();
@@ -176,70 +211,93 @@ export default function ApplyPage() {
       <h1 className="text-2xl font-bold">New Application</h1>
 
       {/* Step indicators */}
-      <div className="flex gap-2">
-        {[1, 2, 3, 4].map((s) => (
-          <div
-            key={s}
-            className={`h-2 flex-1 rounded-full ${s <= step ? "bg-primary" : "bg-muted"}`}
-          />
-        ))}
-      </div>
+      {(() => {
+        const STEPS = ["Job Details", "Experience", "Generating"];
+        return (
+          <div className="flex items-center gap-0">
+            {STEPS.map((label, i) => {
+              const s = i + 1;
+              const isActive = s === step;
+              const isDone = s < step;
+              return (
+                <div key={s} className="flex items-center flex-1 last:flex-none">
+                  <div className="flex flex-col items-center gap-1">
+                    <div
+                      className={`flex h-7 w-7 items-center justify-center rounded-full text-xs font-bold transition-colors ${
+                        isDone
+                          ? "bg-emerald-500 text-white"
+                          : isActive
+                          ? "bg-blue-600 text-white shadow-sm shadow-blue-200"
+                          : "bg-slate-100 text-slate-400"
+                      }`}
+                    >
+                      {isDone ? "✓" : s}
+                    </div>
+                    <span
+                      className={`text-[10px] font-medium whitespace-nowrap ${
+                        isActive ? "text-blue-600" : isDone ? "text-emerald-600" : "text-slate-400"
+                      }`}
+                    >
+                      {label}
+                    </span>
+                  </div>
+                  {s < STEPS.length && (
+                    <div className={`flex-1 h-0.5 mb-4 mx-1 rounded-full transition-colors ${s < step ? "bg-emerald-300" : "bg-slate-200"}`} />
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
-      {/* Step 1: Company & Role */}
+      {/* Step 1: Job Details — company, role, and JD in one screen */}
       {step === 1 && (
         <div className="space-y-4">
-          <h2 className="text-lg font-semibold">Company & Role</h2>
-          <div>
-            <label className="block text-sm font-medium mb-1">Company Name *</label>
-            <input
-              type="text"
-              value={companyName}
-              onChange={(e) => setCompanyName(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="e.g. Goldman Sachs"
-            />
-          </div>
-          <div>
-            <label className="block text-sm font-medium mb-1">Role Title</label>
-            <input
-              type="text"
-              value={roleTitle}
-              onChange={(e) => setRoleTitle(e.target.value)}
-              className="w-full rounded-md border px-3 py-2 text-sm"
-              placeholder="e.g. Summer Analyst"
-            />
-          </div>
-          <button
-            onClick={() => setStep(2)}
-            disabled={!companyName.trim()}
-            className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 disabled:opacity-50"
-          >
-            Next
-          </button>
-        </div>
-      )}
-
-      {/* Step 2: JD Input */}
-      {step === 2 && (
-        <div className="space-y-3">
           {createApplicationError && (
             <div className="rounded-md border border-red-200 bg-red-50 p-3">
               <p className="text-sm text-red-700">{createApplicationError}</p>
             </div>
           )}
+          <div className="grid sm:grid-cols-2 gap-4">
+            <div>
+              <label className="block text-sm font-medium mb-1">Company Name *</label>
+              <input
+                type="text"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="e.g. Goldman Sachs"
+              />
+            </div>
+            <div>
+              <label className="block text-sm font-medium mb-1">Role Title</label>
+              <input
+                type="text"
+                value={roleTitle}
+                onChange={(e) => setRoleTitle(e.target.value)}
+                className="w-full rounded-md border px-3 py-2 text-sm"
+                placeholder="e.g. Summer Analyst"
+              />
+            </div>
+          </div>
           <JdInputStep
             jdText={jdText}
             setJdText={setJdText}
-            onBack={() => setStep(1)}
             onNext={handleJdNext}
             nextLabel={loading ? "Creating..." : "Next"}
             nextLoading={loading}
+            disabledNext={!companyName.trim()}
+            onUrlFetched={(url) => {
+              setJdUrl(url);
+              setJdSource("url");
+            }}
           />
         </div>
       )}
 
-      {/* Step 3: Select Experiences */}
-      {step === 3 && (
+      {/* Step 2: Select Experiences */}
+      {step === 2 && (
         <div className="space-y-4">
           {/* Source mode toggle */}
           <div>
@@ -278,7 +336,7 @@ export default function ApplyPage() {
           ) : (
             <ExperienceSelectStep
               pool={pool}
-              onBack={() => setStep(2)}
+              onBack={() => setStep(1)}
               onNext={handleSelectionNext}
               nextLoading={tailoring}
             />
@@ -286,13 +344,13 @@ export default function ApplyPage() {
         </div>
       )}
 
-      {/* Step 4: Pipeline Progress */}
-      {step === 4 && (
+      {/* Step 3: Pipeline Progress */}
+      {step === 3 && (
         <PipelineProgress
           steps={pipelineSteps}
           error={pipelineError}
           onRetry={() => {
-            setStep(3);
+            setStep(2);
             setPipelineErrorLocal(null);
             clearPipeline();
           }}

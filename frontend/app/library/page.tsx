@@ -81,6 +81,15 @@ export default function LibraryPage() {
     }
   };
 
+  const handleEditBullets = async (id: string, type: "work" | "project" | "activity", bullets: string[]) => {
+    const endpoint =
+      type === "work" ? `/api/experiences/${id}`
+      : type === "project" ? `/api/experiences/projects/${id}`
+      : `/api/experiences/activities/${id}`;
+    await api.put(endpoint, { bullets });
+    await fetchPool();
+  };
+
   useEffect(() => {
     fetchPool();
   }, [fetchPool]);
@@ -174,6 +183,7 @@ export default function LibraryPage() {
                     nameField="company"
                     onDelete={(id) => handleDelete("/api/experiences", id)}
                     deleting={deleting}
+                    onEditBullets={(id, bullets) => handleEditBullets(id, "work", bullets)}
                     actions={
                       <button
                         onClick={() => handleMoveToActivities(exp.id)}
@@ -353,6 +363,7 @@ export default function LibraryPage() {
                     nameField="organization"
                     onDelete={(id) => handleDelete("/api/experiences/activities", id)}
                     deleting={deleting}
+                    onEditBullets={(id, bullets) => handleEditBullets(id, "activity", bullets)}
                   />
                 ))}
               </div>

@@ -171,9 +171,19 @@ export const applicationSchema = z.object({
   jd_raw: z.string(),
   jd_parsed: z.record(z.string(), z.any()).nullable(),
   jd_source: z.string().nullable(),
+  jd_url: z.string().nullable().optional(),
+  notes: z.string().nullable().optional(),
   status: z.string(),
   outcome: z.string().nullable(),
   created_at: z.string(),
+});
+
+// ── Pipeline Status ────────────────────────────────────────────────────
+export const pipelineStatusSchema = z.object({
+  status: z.string(),
+  pipeline_error: z.string().nullable(),
+  pipeline_started_at: z.string().nullable(),
+  cv_version_id: z.string().uuid().nullable(),
 });
 
 // ── Types ──────────────────────────────────────────────────────────────
@@ -188,3 +198,4 @@ export type Skill = z.infer<typeof skillSchema>;
 export type CvProfile = z.infer<typeof profileSchema>;
 export type ExperiencePool = z.infer<typeof experiencePoolSchema>;
 export type Application = z.infer<typeof applicationSchema>;
+export type PipelineStatus = z.infer<typeof pipelineStatusSchema>;
