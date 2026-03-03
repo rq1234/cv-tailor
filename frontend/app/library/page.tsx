@@ -45,6 +45,7 @@ export default function LibraryPage() {
   const [deleting, setDeleting] = useState<string | null>(null);
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [opError, setOpError] = useState<string | null>(null);
+  const [search, setSearch] = useState("");
 
   const toggleGroup = (id: string) => {
     setExpandedGroups((prev) => {
@@ -132,16 +133,36 @@ export default function LibraryPage() {
   const projGroups = pool ? groupByVariant(pool.projects) : [];
   const actGroups = pool ? groupByVariant(pool.activities) : [];
 
+  const q = search.trim().toLowerCase();
+  const filteredExpGroups = q ? expGroups.filter(({ primary: e }) =>
+    (e.company ?? "").toLowerCase().includes(q) || (e.role_title ?? "").toLowerCase().includes(q)
+  ) : expGroups;
+  const filteredProjGroups = q ? projGroups.filter(({ primary: p }) =>
+    (p.name ?? "").toLowerCase().includes(q) || (p.description ?? "").toLowerCase().includes(q)
+  ) : projGroups;
+  const filteredActGroups = q ? actGroups.filter(({ primary: a }) =>
+    (a.organization ?? "").toLowerCase().includes(q) || (a.role_title ?? "").toLowerCase().includes(q)
+  ) : actGroups;
+
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
         <h1 className="text-2xl font-bold">Experience Library</h1>
-        <Link
-          href="/upload"
-          className="inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
-        >
-          Add / Update CV
-        </Link>
+        <div className="flex items-center gap-2">
+          <input
+            type="search"
+            value={search}
+            onChange={(e) => setSearch(e.target.value)}
+            placeholder="Search experiences…"
+            className="w-full sm:w-56 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+          />
+          <Link
+            href="/upload"
+            className="shrink-0 inline-flex items-center rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          >
+            Add / Update CV
+          </Link>
+        </div>
       </div>
 
       {opError && (
@@ -167,13 +188,13 @@ export default function LibraryPage() {
       ) : (
         <div className="space-y-8">
           {/* Work Experiences */}
-          {expGroups.length > 0 && (
+          {filteredExpGroups.length > 0 && (
             <section>
               <h2 className="text-lg font-semibold mb-3">
-                Work Experience ({expGroups.length} roles, {pool!.work_experiences.length} variants)
+                Work Experience ({filteredExpGroups.length} roles{!q && pool!.work_experiences.length > filteredExpGroups.length ? `, ${pool!.work_experiences.length} variants` : ""})
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {expGroups.map(({ primary: exp, variants }) => (
+                {filteredExpGroups.map(({ primary: exp, variants }) => (
                   <ExperienceCard
                     key={exp.id}
                     primary={exp}
@@ -263,13 +284,13 @@ export default function LibraryPage() {
           )}
 
           {/* Projects */}
-          {projGroups.length > 0 && (
+          {filteredProjGroups.length > 0 && (
             <section>
               <h2 className="text-lg font-semibold mb-3">
-                Projects ({projGroups.length}{pool!.projects.length > projGroups.length ? ` projects, ${pool!.projects.length} variants` : ""})
+                Projects ({filteredProjGroups.length}{!q && pool!.projects.length > filteredProjGroups.length ? ` projects, ${pool!.projects.length} variants` : ""})
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {projGroups.map(({ primary: proj, variants }) => (
+                {filteredProjGroups.map(({ primary: proj, variants }) => (
                   <div key={proj.id} className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
@@ -347,13 +368,13 @@ export default function LibraryPage() {
           )}
 
           {/* Activities */}
-          {actGroups.length > 0 && (
+          {filteredActGroups.length > 0 && (
             <section>
               <h2 className="text-lg font-semibold mb-3">
-                Activities ({actGroups.length}{pool!.activities.length > actGroups.length ? ` roles, ${pool!.activities.length} variants` : ""})
+                Activities ({filteredActGroups.length}{!q && pool!.activities.length > filteredActGroups.length ? ` roles, ${pool!.activities.length} variants` : ""})
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
-                {actGroups.map(({ primary: act, variants }) => (
+                {filteredActGroups.map(({ primary: act, variants }) => (
                   <ExperienceCard
                     key={act.id}
                     primary={act}

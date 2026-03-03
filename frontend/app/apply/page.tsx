@@ -28,8 +28,15 @@ export default function ApplyPage() {
   const { pool, poolLoading, fetchPool } = useExperiencePool();
 
   const [step, setStep] = useState(1);
-  const [companyName, setCompanyName] = useState("");
-  const [roleTitle, setRoleTitle] = useState("");
+  // Pre-fill from ?company= and ?role= query params (e.g. when cloning an application)
+  const [companyName, setCompanyName] = useState(() => {
+    if (typeof window !== "undefined") return new URLSearchParams(window.location.search).get("company") ?? "";
+    return "";
+  });
+  const [roleTitle, setRoleTitle] = useState(() => {
+    if (typeof window !== "undefined") return new URLSearchParams(window.location.search).get("role") ?? "";
+    return "";
+  });
   const [jdUrl, setJdUrl] = useState("");
   const [jdSource, setJdSource] = useState<"paste" | "screenshot" | "url">("paste");
   const [jdText, setJdText] = useState("");
@@ -291,6 +298,10 @@ export default function ApplyPage() {
             onUrlFetched={(url) => {
               setJdUrl(url);
               setJdSource("url");
+            }}
+            onAutoFill={(company, role) => {
+              if (!companyName.trim()) setCompanyName(company);
+              if (!roleTitle.trim()) setRoleTitle(role);
             }}
           />
         </div>

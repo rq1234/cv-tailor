@@ -209,12 +209,30 @@ export default function DiffView({
           <div key={section.label}>
             <div className="flex items-center justify-between mb-3">
               <h2 className="text-lg font-bold">{section.label}</h2>
-              <button
-                onClick={() => allCollapsed ? expandSection(sectionIds) : collapseSection(sectionIds)}
-                className="text-xs text-muted-foreground hover:text-foreground underline"
-              >
-                {allCollapsed ? "Expand all" : "Collapse all"}
-              </button>
+              <div className="flex items-center gap-3">
+                <button
+                  onClick={() => section.entries.forEach(([entryId, diff]) => {
+                    for (let i = 0; i < diff.suggested_bullets.length; i++) setBulletDecision(entryId, i, "accept");
+                  })}
+                  className="text-xs text-emerald-600 hover:text-emerald-700 underline"
+                >
+                  Accept all
+                </button>
+                <button
+                  onClick={() => section.entries.forEach(([entryId, diff]) => {
+                    for (let i = 0; i < diff.suggested_bullets.length; i++) setBulletDecision(entryId, i, "reject");
+                  })}
+                  className="text-xs text-red-500 hover:text-red-600 underline"
+                >
+                  Reject all
+                </button>
+                <button
+                  onClick={() => allCollapsed ? expandSection(sectionIds) : collapseSection(sectionIds)}
+                  className="text-xs text-muted-foreground hover:text-foreground underline"
+                >
+                  {allCollapsed ? "Expand all" : "Collapse all"}
+                </button>
+              </div>
             </div>
             {section.entries.map(([entryId, diff]) => {
               const meta = getDiffMeta(entryId, diff, result);
@@ -288,8 +306,10 @@ export default function DiffView({
                         const dropped = droppedMetrics(original, text);
                         const hintKey = `${entryId}_${idx}`;
 
+                        const isPending = !bulletState || bulletState.decision === "pending";
+
                         return (
-                          <div key={idx} className="grid grid-cols-1 md:grid-cols-2 gap-0">
+                          <div key={idx} className={`grid grid-cols-1 md:grid-cols-2 gap-0 ${isPending ? "bg-orange-50/30" : ""}`}>
                             {/* Original */}
                             <div className="border-b md:border-b-0 md:border-r p-3">
                               <div className="text-xs font-medium text-muted-foreground mb-1">Original</div>

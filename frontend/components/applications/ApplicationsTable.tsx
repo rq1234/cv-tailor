@@ -218,6 +218,22 @@ export default function ApplicationsTable({
                               >
                                 {app.notes ? "Edit Notes" : "Add Notes"}
                               </button>
+                              <Link
+                                href={`/apply?company=${encodeURIComponent(app.company_name)}&role=${encodeURIComponent(app.role_title ?? "")}`}
+                                onClick={(e) => { e.stopPropagation(); setOverflowMenuId(null); }}
+                                className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                              >
+                                Clone
+                              </Link>
+                              {canReview && (
+                                <Link
+                                  href={`/review/${app.id}?action=download`}
+                                  onClick={(e) => { e.stopPropagation(); setOverflowMenuId(null); }}
+                                  className="block w-full px-4 py-2 text-left text-sm text-gray-700 hover:bg-gray-50"
+                                >
+                                  Download PDF
+                                </Link>
+                              )}
                               <div className="my-1 border-t border-gray-100" />
                               <button
                                 onClick={(e) => { e.stopPropagation(); setConfirmDeleteId(app.id); setOverflowMenuId(null); }}
