@@ -9,7 +9,7 @@ from typing import Any
 from pydantic import BaseModel, Field
 
 logger = logging.getLogger(__name__)
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.agents.ats_checker import AtsCheckResult, check_ats_compliance
@@ -43,6 +43,7 @@ class PipelineState(BaseModel):
     tailored_projects: list[dict] = Field(default_factory=list)
     tailored_activities: list[dict] = Field(default_factory=list)
     ats_result: dict = Field(default_factory=dict)
+    baseline_ats_result: dict = Field(default_factory=dict)
     cv_version_id: str = ""
     current_step: str = "pending"
     error: str | None = None
@@ -59,8 +60,15 @@ def _orm_to_dict(obj, fields: list[str]) -> dict:
 
 
 async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState:
-    """Node 1: Parse the job description."""
+    """Node 1: Parse the job description.
+
+    Skipped (re-uses stored value) when state.jd_parsed already contains parsed data —
+    this happens on retry runs where the previous parse succeeded.
+    """
     state.current_step = "parsing_jd"
+    # Skip if jd_parsed is already populated (e.g. on retry after a later-stage failure)
+    if state.jd_parsed.get("required_skills") is not None:
+        return state
     try:
         parsed = await parse_jd(state.jd_raw)
         state.jd_parsed = parsed.model_dump()
@@ -73,7 +81,10 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
                 Application.user_id == user_uuid,
             )
         )
-        app = result.scalar_one()
+        app = result.scalar_one_or_none()
+        if not app:
+            state.error = "Application not found"
+            return state
         app.jd_parsed = state.jd_parsed
         app.status = "tailoring"
         await db.commit()
@@ -84,20 +95,139 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
 
 
 async def select_experiences_node(state: PipelineState, db: AsyncSession) -> PipelineState:
-    """Node 2: Select best experiences from the pool (skipped if manual_selection was provided)."""
+    """Node 2: Select best experiences from the pool.
+
+    Skipped if manual_selection or stored pipeline_selection is already in state.
+    After AI selection, persists the result to Application.pipeline_selection so
+    that a retry can skip this step.
+    """
     state.current_step = "selecting_experiences"
     if state.error:
         return state
-    # Skip AI selection if user manually pinned their experiences
+    # Skip AI selection if user manually pinned experiences or a stored selection was loaded
     if state.selection:
         return state
     try:
         user_uuid = uuid.UUID(state.user_id)
         selection = await select_experiences(db, state.jd_parsed, user_uuid, max_pages=state.max_pages, selection_mode=state.selection_mode)
         state.selection = selection.model_dump()
+        # Persist selection so retries can skip this expensive step
+        await db.execute(
+            update(Application)
+            .where(Application.id == uuid.UUID(state.application_id))
+            .values(pipeline_selection=state.selection)
+        )
+        await db.commit()
     except Exception as e:
         logger.exception("Experience selection failed for application %s", state.application_id)
         state.error = f"Experience selection failed: {e}"
+    return state
+
+
+async def baseline_ats_node(state: PipelineState, db: AsyncSession) -> PipelineState:
+    """Node 2b: ATS-check the ORIGINAL (pre-tailoring) CV to establish a baseline score."""
+    state.current_step = "baseline_ats_check"
+    if state.error:
+        return state
+    try:
+        user_uuid = uuid.UUID(state.user_id)
+
+        profile_result = await db.execute(
+            select(CvProfile)
+            .where(CvProfile.user_id == user_uuid)
+            .order_by(CvProfile.updated_at.desc())
+            .limit(1)
+        )
+        profile = profile_result.scalar_one_or_none()
+
+        app_result = await db.execute(
+            select(Application).where(
+                Application.id == uuid.UUID(state.application_id),
+                Application.user_id == user_uuid,
+            )
+        )
+        app = app_result.scalar_one()
+
+        # Fetch raw experiences with original bullets
+        selected_exp_ids = [exp["id"] for exp in state.selection.get("selected_experiences", [])]
+        exp_dicts = []
+        if selected_exp_ids:
+            exp_uuids = [uuid.UUID(eid) for eid in selected_exp_ids]
+            exp_result = await db.execute(
+                select(WorkExperience).where(
+                    WorkExperience.id.in_(exp_uuids),
+                    WorkExperience.user_id == user_uuid,
+                )
+            )
+            exp_dicts = [
+                {
+                    "id": str(e.id),
+                    "original_bullets": e.bullets if isinstance(e.bullets, list) else [],
+                    "suggested_bullets": e.bullets if isinstance(e.bullets, list) else [],
+                    "company": e.company,
+                    "role_title": e.role_title,
+                }
+                for e in exp_result.scalars().all()
+            ]
+
+        selected_proj_ids = state.selection.get("selected_projects", [])
+        proj_dicts = []
+        if selected_proj_ids:
+            proj_uuids = [uuid.UUID(pid) for pid in selected_proj_ids]
+            proj_result = await db.execute(
+                select(Project).where(
+                    Project.id.in_(proj_uuids),
+                    Project.user_id == user_uuid,
+                )
+            )
+            proj_dicts = [
+                {
+                    "id": str(p.id),
+                    "original_bullets": p.bullets if isinstance(p.bullets, list) else [],
+                    "suggested_bullets": p.bullets if isinstance(p.bullets, list) else [],
+                }
+                for p in proj_result.scalars().all()
+            ]
+
+        selected_act_ids = state.selection.get("selected_activities", [])
+        act_dicts = []
+        if selected_act_ids:
+            act_uuids = [uuid.UUID(aid) for aid in selected_act_ids]
+            act_result = await db.execute(
+                select(Activity).where(
+                    Activity.id.in_(act_uuids),
+                    Activity.user_id == user_uuid,
+                )
+            )
+            act_dicts = [
+                {
+                    "id": str(a.id),
+                    "original_bullets": a.bullets if isinstance(a.bullets, list) else [],
+                    "suggested_bullets": a.bullets if isinstance(a.bullets, list) else [],
+                }
+                for a in act_result.scalars().all()
+            ]
+
+        baseline_cv_json = {
+            "profile": {
+                "name": profile.full_name if profile else None,
+                "email": profile.email if profile else None,
+                "phone": profile.phone if profile else None,
+                "location": profile.location if profile else None,
+            },
+            "target_role": app.role_title,
+            "experiences": exp_dicts,
+            "projects": proj_dicts,
+            "activities": act_dicts,
+            "education": state.selection.get("selected_education", []),
+            "skills": state.selection.get("selected_skills", []),
+        }
+
+        baseline_result = await check_ats_compliance(baseline_cv_json)
+        state.baseline_ats_result = baseline_result.model_dump()
+    except Exception as e:
+        logger.warning("Baseline ATS check failed (non-fatal): %s", e)
+        # Non-fatal — pipeline continues without baseline score
     return state
 
 
@@ -252,7 +382,10 @@ async def ats_check_node(state: PipelineState, db: AsyncSession) -> PipelineStat
                 Application.user_id == user_uuid,
             )
         )
-        app = app_result.scalar_one()
+        app = app_result.scalar_one_or_none()
+        if not app:
+            state.error = "Application not found"
+            return state
 
         # Get profile
         profile_result = await db.execute(
@@ -351,6 +484,9 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
             diff_json=diff_json,
             ats_score=state.ats_result.get("ats_score"),
             ats_warnings=state.ats_result.get("warnings", []),
+            baseline_ats_score=state.baseline_ats_result.get("ats_score"),
+            baseline_ats_warnings=state.baseline_ats_result.get("warnings", []),
+            gap_analysis=state.gap_analysis if state.gap_analysis else None,
         )
         db.add(cv_version)
         await db.flush()
@@ -363,7 +499,10 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 Application.user_id == uuid.UUID(state.user_id),
             )
         )
-        app = app_result.scalar_one()
+        app = app_result.scalar_one_or_none()
+        if not app:
+            state.error = "Application not found while saving results"
+            return state
         app.status = "review"
         await db.commit()
 
@@ -382,6 +521,7 @@ async def run_pipeline(
     on_step: Any | None = None,
     manual_selection: dict | None = None,
     selection_mode: str = "library",
+    skip_completed: bool = False,
 ) -> PipelineState:
     """Run the full tailoring pipeline.
 
@@ -394,6 +534,8 @@ async def run_pipeline(
             Expected keys: selected_experiences (list of {"id": str}), selected_projects,
             selected_activities, selected_education, selected_skills (lists of UUID strings).
         selection_mode: "library" = best across all uploads, "latest_cv" = only from most recent upload.
+        skip_completed: If True, load previously stored jd_parsed / pipeline_selection from the
+            Application record so successful stages are not re-run.
     """
     # Read user preference for resume page count
     pref_result = await db.execute(
@@ -412,10 +554,25 @@ async def run_pipeline(
 
     if manual_selection is not None:
         state.selection = manual_selection
+    elif skip_completed:
+        # Pre-populate state from stored Application data so completed stages are skipped.
+        app_result = await db.execute(
+            select(Application).where(
+                Application.id == uuid.UUID(application_id),
+                Application.user_id == user_id,
+            )
+        )
+        app = app_result.scalar_one_or_none()
+        if app:
+            if app.jd_parsed:
+                state.jd_parsed = app.jd_parsed
+            if app.pipeline_selection:
+                state.selection = app.pipeline_selection
 
     steps = [
         ("parsing_jd", parse_jd_node),
         ("selecting_experiences", select_experiences_node),
+        ("baseline_ats_check", baseline_ats_node),
         ("analyzing_gaps", analyze_gaps_node),
         ("tailoring_cv", tailor_cv_node),
         ("tailoring_projects", tailor_projects_node),

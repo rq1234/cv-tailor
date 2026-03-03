@@ -1,3 +1,5 @@
+import { useState } from "react";
+
 interface VariantItem {
   id: string;
   role_title?: string | null;
@@ -10,6 +12,7 @@ interface VariantItem {
   needs_review?: boolean;
   variant_group_id?: string | null;
   is_primary_variant?: boolean;
+  bullets?: unknown[] | null;
 }
 
 interface ExperienceCardProps<T extends VariantItem> {
@@ -21,6 +24,101 @@ interface ExperienceCardProps<T extends VariantItem> {
   actions?: React.ReactNode;
   onDelete?: (id: string) => void;
   deleting?: string | null;
+  onEditBullets?: (id: string, bullets: string[]) => Promise<void>;
+}
+
+function extractBulletStrings(raw: unknown[] | null | undefined): string[] {
+  if (!raw || !Array.isArray(raw)) return [];
+  return raw.map((b) => {
+    if (typeof b === "string") return b;
+    if (b && typeof b === "object" && "text" in b) return String((b as { text: unknown }).text);
+    return String(b);
+  }).filter(Boolean);
+}
+
+function BulletList({
+  id,
+  bullets,
+  onEditBullets,
+}: {
+  id: string;
+  bullets: string[];
+  onEditBullets?: (id: string, bullets: string[]) => Promise<void>;
+}) {
+  const [editingIndex, setEditingIndex] = useState<number | null>(null);
+  const [editValue, setEditValue] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  if (bullets.length === 0) return null;
+
+  const handleEdit = (idx: number) => {
+    setEditingIndex(idx);
+    setEditValue(bullets[idx]);
+  };
+
+  const handleSave = async (idx: number) => {
+    if (!onEditBullets || editValue.trim() === bullets[idx]) {
+      setEditingIndex(null);
+      return;
+    }
+    const updated = bullets.map((b, i) => (i === idx ? editValue.trim() : b));
+    setSaving(true);
+    try {
+      await onEditBullets(id, updated);
+    } finally {
+      setSaving(false);
+      setEditingIndex(null);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-1">
+      {bullets.map((bullet, idx) => (
+        <div key={idx} className="group flex items-start gap-1.5 text-xs text-slate-600">
+          <span className="mt-0.5 flex-shrink-0 text-slate-400">•</span>
+          {editingIndex === idx ? (
+            <div className="flex-1 flex flex-col gap-1">
+              <textarea
+                value={editValue}
+                onChange={(e) => setEditValue(e.target.value)}
+                className="w-full rounded border px-2 py-1 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-blue-400"
+                rows={2}
+                autoFocus
+              />
+              <div className="flex gap-1.5">
+                <button
+                  onClick={() => handleSave(idx)}
+                  disabled={saving}
+                  className="rounded bg-blue-600 px-2 py-0.5 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50"
+                >
+                  {saving ? "Saving…" : "Save"}
+                </button>
+                <button
+                  onClick={() => setEditingIndex(null)}
+                  className="rounded border px-2 py-0.5 text-xs font-medium text-slate-600 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex-1 flex items-start justify-between gap-1">
+              <span>{bullet}</span>
+              {onEditBullets && (
+                <button
+                  onClick={() => handleEdit(idx)}
+                  className="flex-shrink-0 opacity-0 group-hover:opacity-100 rounded px-1 py-0.5 text-[10px] text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-opacity"
+                  title="Edit bullet"
+                >
+                  ✎
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      ))}
+    </div>
+  );
 }
 
 export default function ExperienceCard<T extends VariantItem>({
@@ -32,9 +130,12 @@ export default function ExperienceCard<T extends VariantItem>({
   actions,
   onDelete,
   deleting,
+  onEditBullets,
 }: ExperienceCardProps<T>) {
+  const [bulletsExpanded, setBulletsExpanded] = useState(false);
   const subtitle = nameField === "company" ? primary.company : primary.organization;
   const variantSubtitle = (v: T) => nameField === "company" ? v.company : v.organization;
+  const bullets = extractBulletStrings(primary.bullets);
 
   return (
     <div className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
@@ -83,6 +184,22 @@ export default function ExperienceCard<T extends VariantItem>({
           ))}
         </div>
       )}
+
+      {/* Bullet list with inline editing */}
+      {bullets.length > 0 && (
+        <div className="mt-2">
+          <button
+            onClick={() => setBulletsExpanded((v) => !v)}
+            className="text-xs text-slate-400 hover:text-slate-600 transition-colors"
+          >
+            {bulletsExpanded ? "▾ Hide bullets" : `▸ ${bullets.length} bullet${bullets.length !== 1 ? "s" : ""}`}
+          </button>
+          {bulletsExpanded && (
+            <BulletList id={primary.id} bullets={bullets} onEditBullets={onEditBullets} />
+          )}
+        </div>
+      )}
+
       {actions}
       {expanded && variants.length > 0 && (
         <div className="mt-3 border-t pt-2 space-y-2">

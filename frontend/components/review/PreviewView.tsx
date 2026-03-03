@@ -166,7 +166,7 @@ export default function PreviewView({
   ].filter((s) => s.entries.length > 0);
 
   return (
-    <div className="grid grid-cols-2 gap-6">
+    <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       {/* Original Resume */}
       <div>
         <h3 className="text-sm font-semibold text-muted-foreground mb-3 uppercase tracking-wide">Original</h3>

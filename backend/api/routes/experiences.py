@@ -14,7 +14,7 @@ from backend.api.auth import get_current_user
 from backend.api.db_helpers import apply_update, delete_or_404, get_or_404
 from backend.models.database import get_db
 from backend.models.tables import Activity, CvVersion, Education, Project, Skill, UnclassifiedBlock, WorkExperience
-from backend.schemas.pydantic import ActivityOut, ActivityUpdate, WorkExperienceOut, WorkExperienceUpdate
+from backend.schemas.pydantic import ActivityOut, ActivityUpdate, ProjectOut, ProjectUpdate, WorkExperienceOut, WorkExperienceUpdate
 from backend.services.deduplicator import deduplicate_activity
 
 router = APIRouter(prefix="/api/experiences", tags=["experiences"])
@@ -84,6 +84,23 @@ async def delete_education(
 ):
     """Delete an education entry."""
     return await delete_or_404(db, Education, education_id, user_id, "Education not found")
+
+
+@router.put("/projects/{project_id}", response_model=ProjectOut)
+async def update_project(
+    project_id: uuid.UUID,
+    update: ProjectUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Update a parsed project (user correction or bullet editing)."""
+    proj = await get_or_404(db, Project, project_id, user_id, "Project not found")
+
+    apply_update(proj, update.model_dump(exclude_unset=True))
+    proj.needs_review = False
+    await db.commit()
+    await db.refresh(proj)
+    return ProjectOut.model_validate(proj)
 
 
 @router.delete("/projects/{project_id}")

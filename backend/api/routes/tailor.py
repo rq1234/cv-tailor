@@ -6,11 +6,12 @@ import asyncio
 import json
 import logging
 import uuid
+from datetime import datetime, timedelta, timezone
 
 from fastapi import APIRouter, Depends, HTTPException, Request
 from slowapi import Limiter
 from slowapi.util import get_remote_address
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 from sse_starlette.sse import EventSourceResponse
 
@@ -21,7 +22,7 @@ from backend.api.auth import get_current_user
 from backend.api.db_helpers import fetch_active_rules_text
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, WorkExperience
-from backend.schemas.pydantic import RegenerateBulletRequest, TailorRunRequest
+from backend.schemas.pydantic import PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
 
 logger = logging.getLogger(__name__)
 
@@ -31,9 +32,8 @@ limiter = Limiter(key_func=get_remote_address)
 # Maximum time a single pipeline run is allowed to take (10 minutes).
 _PIPELINE_TIMEOUT_S = 600
 
-# In-flight guard: tracks which users currently have a pipeline running.
-# Single-process safe (Render Starter = 1 process). For multi-process, move to Redis.
-_active_tailoring: set[str] = set()
+# Stale-lock cutoff: a pipeline_started_at older than this is considered abandoned.
+_LOCK_TTL_S = _PIPELINE_TIMEOUT_S + 60  # 660 seconds
 
 
 @router.post("/run")
@@ -48,25 +48,35 @@ async def run_tailoring(
 
     Returns SSE stream with progress updates, then final result.
     """
-    # Validate application exists
+    # Validate application exists and acquire DB-based lock (multi-process safe).
+    # SELECT FOR UPDATE serialises concurrent requests so only one can set pipeline_started_at.
     result = await db.execute(
-        select(Application).where(
+        select(Application)
+        .where(
             Application.id == body.application_id,
             Application.user_id == user_id,
         )
+        .with_for_update()
     )
     app = result.scalar_one_or_none()
     if not app:
         raise HTTPException(status_code=404, detail="Application not found")
 
-    user_key = str(user_id)
-
-    # Reject concurrent pipelines for the same user.
-    if user_key in _active_tailoring:
+    now = datetime.now(timezone.utc)
+    stale_cutoff = now - timedelta(seconds=_LOCK_TTL_S)
+    if app.pipeline_started_at and app.pipeline_started_at > stale_cutoff:
         raise HTTPException(
             status_code=409,
             detail="A tailoring job is already running for your account. Please wait for it to finish.",
         )
+
+    # Acquire lock: set pipeline_started_at and clear any previous error.
+    await db.execute(
+        update(Application)
+        .where(Application.id == body.application_id)
+        .values(pipeline_started_at=now, pipeline_error=None)
+    )
+    await db.commit()
 
     async def event_generator():
         step_queue: asyncio.Queue[tuple[str, str]] = asyncio.Queue()
@@ -96,10 +106,18 @@ async def run_tailoring(
                 "selected_skills": [str(uid) for uid in (body.pinned_skills or [])],
             }
 
-        _active_tailoring.add(user_key)
         pipeline_task = asyncio.create_task(
             asyncio.wait_for(
-                run_pipeline(str(body.application_id), app.jd_raw, db, user_id, on_step, manual_selection, selection_mode=body.selection_mode),
+                run_pipeline(
+                    str(body.application_id),
+                    app.jd_raw,
+                    db,
+                    user_id,
+                    on_step,
+                    manual_selection,
+                    selection_mode=body.selection_mode,
+                    skip_completed=True,
+                ),
                 timeout=_PIPELINE_TIMEOUT_S,
             )
         )
@@ -129,6 +147,12 @@ async def run_tailoring(
             state = await pipeline_task
 
             if state.error:
+                await db.execute(
+                    update(Application)
+                    .where(Application.id == body.application_id)
+                    .values(pipeline_started_at=None, pipeline_error=state.error)
+                )
+                await db.commit()
                 yield {"event": "error", "data": json.dumps({"error": state.error})}
             else:
                 yield {
@@ -144,24 +168,130 @@ async def run_tailoring(
         except asyncio.TimeoutError:
             pipeline_task.cancel()
             logger.error("Pipeline timed out after %ds for application %s", _PIPELINE_TIMEOUT_S, body.application_id)
-            yield {"event": "error", "data": json.dumps({"error": "Tailoring timed out. Please try again."})}
+            error_msg = "Tailoring timed out. Please try again."
+            await db.execute(
+                update(Application)
+                .where(Application.id == body.application_id)
+                .values(pipeline_started_at=None, pipeline_error=error_msg)
+            )
+            await db.commit()
+            yield {"event": "error", "data": json.dumps({"error": error_msg})}
 
         except asyncio.CancelledError:
             pipeline_task.cancel()
+            await db.execute(
+                update(Application)
+                .where(Application.id == body.application_id)
+                .values(pipeline_started_at=None)
+            )
+            await db.commit()
             return
 
         except Exception:
             pipeline_task.cancel()
             logger.exception("Pipeline raised unexpectedly for application %s", body.application_id)
-            yield {"event": "error", "data": json.dumps({"error": "An unexpected error occurred. Please try again."})}
+            error_msg = "An unexpected error occurred. Please try again."
+            await db.execute(
+                update(Application)
+                .where(Application.id == body.application_id)
+                .values(pipeline_started_at=None, pipeline_error=error_msg)
+            )
+            await db.commit()
+            yield {"event": "error", "data": json.dumps({"error": error_msg})}
 
         finally:
-            _active_tailoring.discard(user_key)
+            # Ensure lock is always released (guards against unhandled paths).
+            try:
+                await db.execute(
+                    update(Application)
+                    .where(Application.id == body.application_id, Application.pipeline_started_at.isnot(None))
+                    .values(pipeline_started_at=None)
+                )
+                await db.commit()
+            except Exception:
+                pass
 
     return EventSourceResponse(event_generator())
 
 
 # ── Private helpers for get_tailor_result ──────────────────────────────────
+
+
+async def _find_similar_applications(
+    db: AsyncSession,
+    current_app: Application,
+    user_id: uuid.UUID,
+) -> list[dict]:
+    """Return up to 3 past applications similar to the current one by domain + keyword overlap."""
+    if not current_app.jd_parsed or not isinstance(current_app.jd_parsed, dict):
+        return []
+
+    current_domain = (current_app.jd_parsed.get("domain") or "").lower()
+    current_keywords = set(
+        kw.lower() for kw in (current_app.jd_parsed.get("keywords") or [])
+    )
+
+    # Fetch all other applications with a parsed JD and status=complete/review
+    other_apps_result = await db.execute(
+        select(Application).where(
+            Application.user_id == user_id,
+            Application.id != current_app.id,
+            Application.jd_parsed.isnot(None),
+            Application.status.in_(["review", "complete"]),
+        )
+    )
+    other_apps = other_apps_result.scalars().all()
+
+    # Fetch latest ATS score for each
+    if not other_apps:
+        return []
+
+    other_app_ids = [a.id for a in other_apps]
+    cv_result = await db.execute(
+        select(CvVersion.application_id, CvVersion.ats_score)
+        .where(
+            CvVersion.user_id == user_id,
+            CvVersion.application_id.in_(other_app_ids),
+            CvVersion.ats_score.isnot(None),
+        )
+        .order_by(CvVersion.application_id, CvVersion.created_at.desc())
+        .distinct(CvVersion.application_id)
+    )
+    ats_by_app = {str(app_id): score for app_id, score in cv_result.all()}
+
+    # Score each app: +2 for domain match, +keyword Jaccard * 10
+    scored = []
+    for other in other_apps:
+        if not other.jd_parsed or not isinstance(other.jd_parsed, dict):
+            continue
+        other_domain = (other.jd_parsed.get("domain") or "").lower()
+        other_keywords = set(
+            kw.lower() for kw in (other.jd_parsed.get("keywords") or [])
+        )
+        score = 0.0
+        if current_domain and current_domain == other_domain:
+            score += 2.0
+        if current_keywords and other_keywords:
+            union = current_keywords | other_keywords
+            intersection = current_keywords & other_keywords
+            score += (len(intersection) / len(union)) * 10.0 if union else 0.0
+        if score > 0:
+            scored.append((score, other))
+
+    scored.sort(key=lambda x: x[0], reverse=True)
+    top = scored[:3]
+
+    return [
+        {
+            "id": str(a.id),
+            "company_name": a.company_name,
+            "role_title": a.role_title,
+            "ats_score": ats_by_app.get(str(a.id)),
+            "domain": (a.jd_parsed.get("domain") or None) if a.jd_parsed else None,
+            "created_at": a.created_at.isoformat(),
+        }
+        for _, a in top
+    ]
 
 async def _fetch_experience_meta(
     db: AsyncSession,
@@ -332,7 +462,9 @@ async def get_tailor_result(
             Application.user_id == user_id,
         )
     )
-    app = app_result.scalar_one()
+    app = app_result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
 
     # Separate IDs by type from diff_json
     diff = cv_version.diff_json or {}
@@ -350,9 +482,14 @@ async def get_tailor_result(
     education_data = await _fetch_education_data(db, edu_ids, user_id)
     skills_data = await _fetch_skills_data(db, skill_ids, user_id)
 
+    # Find similar past applications by domain + keyword overlap
+    similar_applications = await _find_similar_applications(db, app, user_id)
+
     return {
         "cv_version_id": str(cv_version.id),
         "application_id": str(application_id),
+        "company_name": app.company_name,
+        "role_title": app.role_title,
         "diff_json": cv_version.diff_json,
         "experience_meta": experience_meta,
         "project_meta": project_meta,
@@ -368,8 +505,54 @@ async def get_tailor_result(
         "rejected_changes": cv_version.rejected_changes,
         "ats_score": cv_version.ats_score,
         "ats_warnings": cv_version.ats_warnings or [],
+        "baseline_ats_score": cv_version.baseline_ats_score,
+        "baseline_ats_warnings": cv_version.baseline_ats_warnings or [],
+        "similar_applications": similar_applications,
         "status": app.status,
     }
+
+
+@router.get("/status/{application_id}", response_model=PipelineStatusOut)
+async def get_pipeline_status(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Return current pipeline status for an application.
+
+    Used by the frontend to recover from stream disconnects:
+    - If cv_version_id is set, the pipeline completed and the user can view results.
+    - If pipeline_error is set, the pipeline failed and the user can retry.
+    - If pipeline_started_at is recent and neither above, the pipeline is still running.
+    """
+    app_result = await db.execute(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
+    )
+    app = app_result.scalar_one_or_none()
+    if not app:
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    # Get latest CvVersion id if one exists
+    cv_result = await db.execute(
+        select(CvVersion.id)
+        .where(
+            CvVersion.application_id == application_id,
+            CvVersion.user_id == user_id,
+        )
+        .order_by(CvVersion.created_at.desc())
+        .limit(1)
+    )
+    cv_version_id = cv_result.scalar_one_or_none()
+
+    return PipelineStatusOut(
+        status=app.status,
+        pipeline_error=app.pipeline_error,
+        pipeline_started_at=app.pipeline_started_at,
+        cv_version_id=cv_version_id,
+    )
 
 
 @router.put("/cv-versions/{version_id}/accept-changes")
@@ -477,7 +660,9 @@ async def accept_changes(
 
 
 @router.post("/re-tailor/{application_id}")
+@limiter.limit("10/hour")
 async def re_tailor_application(
+    request: Request,
     application_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
@@ -635,8 +820,11 @@ async def re_tailor_application(
             "requirements_addressed": ta.requirements_addressed,
         }
 
-    # Update CV version — preserve user's accepted/rejected decisions
+    # Update CV version — new diff supersedes old decisions, so clear them
     cv_version.diff_json = diff_json
+    cv_version.accepted_changes = None
+    cv_version.rejected_changes = None
+    cv_version.final_cv_json = None
     await db.commit()
 
     return {
@@ -698,6 +886,20 @@ async def regenerate_bullet(
 
     rules_text = await fetch_active_rules_text(db, user_id)
 
+    # Append hint and rejected variants to the rules context for this regeneration
+    effective_rules = rules_text
+    if body.hint:
+        effective_rules += (
+            f"\n\nUSER HINT FOR THIS SPECIFIC BULLET ONLY: {body.hint.strip()}\n"
+            "Treat this as a hard instruction for the rewrite — prioritise it above all other guidance."
+        )
+    if body.rejected_variants:
+        variants_list = "\n".join(f"- {v}" for v in body.rejected_variants[:5])
+        effective_rules += (
+            f"\n\nPREVIOUS REJECTED VERSIONS (user did not like these — do NOT reproduce any of them):\n"
+            f"{variants_list}"
+        )
+
     # 3. Fetch the entity and call the appropriate tailor function with just this bullet
     if entity_type == "experience":
         ent_result = await db.execute(
@@ -714,7 +916,7 @@ async def regenerate_bullet(
             [{"id": exp_id_str, "company": entity.company, "role_title": entity.role_title, "bullets": [original_bullet]}],
             app.jd_parsed,
             None,
-            rules_text,
+            effective_rules,
         )
         bullet = tailored[0].suggested_bullets[0]
 
@@ -732,7 +934,7 @@ async def regenerate_bullet(
         tailored = await tailor_projects(
             [{"id": exp_id_str, "name": entity.name, "description": entity.description, "bullets": [original_bullet]}],
             app.jd_parsed,
-            rules_text,
+            effective_rules,
         )
         bullet = tailored[0].suggested_bullets[0]
 
@@ -750,7 +952,7 @@ async def regenerate_bullet(
         tailored = await tailor_activities(
             [{"id": exp_id_str, "organization": entity.organization, "role_title": entity.role_title, "bullets": [original_bullet]}],
             app.jd_parsed,
-            rules_text,
+            effective_rules,
         )
         bullet = tailored[0].suggested_bullets[0]
 

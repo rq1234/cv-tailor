@@ -120,7 +120,14 @@ export default function UploadPage() {
       )}
 
       {!result && !uploading && (
-        <CVDropzone onFileSelected={handleFileSelected} />
+        <>
+          <CVDropzone onFileSelected={handleFileSelected} />
+          <p className="text-center text-xs text-muted-foreground">
+            Your CV text is sent to OpenAI to extract experiences — the original file is not retained after processing.
+            Parsed data is stored in your account and can be deleted at any time from your{" "}
+            <a href="/library" className="underline underline-offset-2 hover:text-foreground">library</a>.
+          </p>
+        </>
       )}
 
       {uploading && (

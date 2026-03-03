@@ -335,7 +335,7 @@ async def _trim_just_over_line(
 ) -> TailoredBullet:
     """Optimize bullets that are just slightly over one line (105-145 chars).
     
-    LaTeX CV with \small font fits ~90-100 chars per line. Bullets 105-145 chars
+    LaTeX CV with \\small font fits ~90-100 chars per line. Bullets 105-145 chars
     waste half a line. Try to trim them to fit on one line without losing key info.
     """
     text_len = len(suggested.text)

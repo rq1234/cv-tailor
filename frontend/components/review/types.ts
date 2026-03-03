@@ -55,9 +55,20 @@ export interface EducationData {
   modules: string[];
 }
 
+export interface SimilarApplication {
+  id: string;
+  company_name: string;
+  role_title: string | null;
+  ats_score: number | null;
+  domain: string | null;
+  created_at: string;
+}
+
 export interface TailorResult {
   cv_version_id: string;
   application_id: string;
+  company_name?: string;
+  role_title?: string | null;
   diff_json: Record<string, ExperienceDiff>;
   experience_meta: Record<string, ExperienceMeta>;
   project_meta: Record<string, ProjectMeta>;
@@ -66,6 +77,9 @@ export interface TailorResult {
   skills_data: Record<string, string[]>;
   ats_score?: number;
   ats_warnings?: AtsWarning[];
+  baseline_ats_score?: number;
+  baseline_ats_warnings?: AtsWarning[];
+  similar_applications?: SimilarApplication[];
   status: string;
 }
 

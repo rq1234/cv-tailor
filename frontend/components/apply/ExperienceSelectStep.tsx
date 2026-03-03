@@ -62,7 +62,11 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
 
       {/* Work Experience */}
       {pool.work_experiences.length > 0 && (
-        <Section title={`Work Experience (${selectedExp.size} / ${pool.work_experiences.length})`}>
+        <Section
+          title={`Work Experience (${selectedExp.size} / ${pool.work_experiences.length})`}
+          onAll={() => setSelectedExp(new Set(allExpIds))}
+          onNone={() => setSelectedExp(new Set())}
+        >
           {pool.work_experiences.map((exp) => (
             <CheckItem
               key={exp.id}
@@ -78,7 +82,11 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
 
       {/* Education */}
       {pool.education.length > 0 && (
-        <Section title={`Education (${selectedEdu.size} / ${pool.education.length})`}>
+        <Section
+          title={`Education (${selectedEdu.size} / ${pool.education.length})`}
+          onAll={() => setSelectedEdu(new Set(allEduIds))}
+          onNone={() => setSelectedEdu(new Set())}
+        >
           {pool.education.map((edu) => (
             <CheckItem
               key={edu.id}
@@ -94,7 +102,11 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
 
       {/* Projects */}
       {pool.projects.length > 0 && (
-        <Section title={`Projects (${selectedProj.size} / ${pool.projects.length})`}>
+        <Section
+          title={`Projects (${selectedProj.size} / ${pool.projects.length})`}
+          onAll={() => setSelectedProj(new Set(allProjIds))}
+          onNone={() => setSelectedProj(new Set())}
+        >
           {pool.projects.map((proj) => (
             <CheckItem
               key={proj.id}
@@ -109,7 +121,11 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
 
       {/* Activities */}
       {pool.activities.length > 0 && (
-        <Section title={`Activities (${selectedAct.size} / ${pool.activities.length})`}>
+        <Section
+          title={`Activities (${selectedAct.size} / ${pool.activities.length})`}
+          onAll={() => setSelectedAct(new Set(allActIds))}
+          onNone={() => setSelectedAct(new Set())}
+        >
           {pool.activities.map((act) => (
             <CheckItem
               key={act.id}
@@ -126,9 +142,15 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
       {/* Skills */}
       {pool.skills.length > 0 && (
         <div className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">
-            Skills ({selectedSkill.size} / {pool.skills.length})
-          </h3>
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-medium text-muted-foreground">
+              Skills ({selectedSkill.size} / {pool.skills.length})
+            </h3>
+            <div className="flex gap-2 text-xs">
+              <button onClick={() => setSelectedSkill(new Set(allSkillIds))} className="text-muted-foreground hover:text-foreground underline">All</button>
+              <button onClick={() => setSelectedSkill(new Set())} className="text-muted-foreground hover:text-foreground underline">None</button>
+            </div>
+          </div>
           <div className="flex flex-wrap gap-2">
             {pool.skills.map((skill) => (
               <button
@@ -172,10 +194,21 @@ export default function ExperienceSelectStep({ pool, onBack, onNext, nextLoading
   );
 }
 
-function Section({ title, children }: { title: string; children: React.ReactNode }) {
+function Section({ title, children, onAll, onNone }: {
+  title: string;
+  children: React.ReactNode;
+  onAll?: () => void;
+  onNone?: () => void;
+}) {
   return (
     <div className="space-y-2">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
+        <div className="flex gap-2 text-xs">
+          {onAll && <button onClick={onAll} className="text-muted-foreground hover:text-foreground underline">All</button>}
+          {onNone && <button onClick={onNone} className="text-muted-foreground hover:text-foreground underline">None</button>}
+        </div>
+      </div>
       <div className="rounded-lg border divide-y">{children}</div>
     </div>
   );
