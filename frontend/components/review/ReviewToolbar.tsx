@@ -19,6 +19,7 @@ interface Counts {
   accepted: number;
   rejected: number;
   edited: number;
+  pending: number;
 }
 
 interface ReviewToolbarProps {
@@ -105,6 +106,9 @@ export default function ReviewToolbar({
             <span className="text-emerald-600 font-medium">{counts.accepted} accepted</span>,{" "}
             <span className="text-red-500 font-medium">{counts.rejected} rejected</span>,{" "}
             <span className="text-amber-600 font-medium">{counts.edited} edited</span>
+            {counts.pending > 0 && (
+              <>, <span className="text-orange-500 font-medium">{counts.pending} pending review</span></>
+            )}
           </p>
         </div>
 

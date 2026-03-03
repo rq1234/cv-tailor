@@ -14,6 +14,25 @@ interface JdInputStepProps {
   disabledNext?: boolean;
   /** Called when a URL was successfully fetched so the parent can store it. */
   onUrlFetched?: (url: string) => void;
+  /** Called when company/role can be inferred from the JD text. */
+  onAutoFill?: (company: string, role: string) => void;
+}
+
+function extractCompanyAndRole(text: string): { company: string; role: string } {
+  let company = "";
+  let role = "";
+  for (const line of text.split("\n").map((s) => s.trim()).filter(Boolean)) {
+    if (!role) {
+      const m = line.match(/^(?:job title|position|role|title)\s*[:\-]\s*(.+)/i);
+      if (m) role = m[1].trim();
+    }
+    if (!company) {
+      const m = line.match(/^(?:company|organisation|organization|employer|hiring company|firm)\s*[:\-]\s*(.+)/i);
+      if (m) company = m[1].trim();
+    }
+    if (role && company) break;
+  }
+  return { company, role };
 }
 
 const TABS: { key: JdSource; label: string }[] = [
@@ -31,8 +50,19 @@ export default function JdInputStep({
   nextLoading = false,
   disabledNext = false,
   onUrlFetched,
+  onAutoFill,
 }: JdInputStepProps) {
   const [jdSource, setJdSource] = useState<JdSource>("paste");
+
+  // Auto-fill company/role from JD text (debounced)
+  useEffect(() => {
+    if (!onAutoFill || jdText.length < 50) return;
+    const timer = setTimeout(() => {
+      const { company, role } = extractCompanyAndRole(jdText);
+      if (company || role) onAutoFill(company, role);
+    }, 600);
+    return () => clearTimeout(timer);
+  }, [jdText, onAutoFill]);
 
   // URL tab state
   const [urlInput, setUrlInput] = useState("");

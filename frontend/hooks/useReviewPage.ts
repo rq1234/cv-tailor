@@ -15,6 +15,7 @@ interface Counts {
   accepted: number;
   rejected: number;
   edited: number;
+  pending: number;
   total: number;
 }
 
@@ -40,7 +41,7 @@ function buildChanges(
 
     for (const [idxStr, bullet] of Object.entries(expDecisions)) {
       const idx = parseInt(idxStr);
-      if (bullet.decision === "accept") {
+      if (bullet.decision === "accept" || bullet.decision === "pending") {
         acceptedBullets.push(bullet.editedText ?? bulletText(diff.suggested_bullets[idx]));
       } else if (bullet.decision === "edit" && bullet.editedText) {
         acceptedBullets.push(bullet.editedText);
@@ -121,8 +122,10 @@ export function useReviewPage(applicationId: string) {
     const initial: Record<string, Record<number, BulletState>> = {};
     for (const [expId, diff] of Object.entries(data.diff_json || {})) {
       initial[expId] = {};
+      // Auto-accept high-confidence entries; mark low-confidence as pending for review
+      const autoAccept = diff.confidence >= 0.75;
       for (let i = 0; i < diff.suggested_bullets.length; i++) {
-        initial[expId][i] = { decision: "accept" };
+        initial[expId][i] = { decision: autoAccept ? "accept" : "pending" };
       }
     }
     return initial;
@@ -383,13 +386,14 @@ export function useReviewPage(applicationId: string) {
   }, [applicationId, result, rejectedVariants, setBulletDecision]);
 
   // ── Computed values ─────────────────────────────────────────────────
-  const counts: Counts = { accepted: 0, rejected: 0, edited: 0, total: 0 };
+  const counts: Counts = { accepted: 0, rejected: 0, edited: 0, pending: 0, total: 0 };
   for (const expDecisions of Object.values(decisions)) {
     for (const bullet of Object.values(expDecisions)) {
       counts.total++;
       if (bullet.decision === "accept") counts.accepted++;
       else if (bullet.decision === "reject") counts.rejected++;
       else if (bullet.decision === "edit") counts.edited++;
+      else if (bullet.decision === "pending") counts.pending++;
     }
   }
 

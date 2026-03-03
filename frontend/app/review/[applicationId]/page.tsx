@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useReviewPage } from "@/hooks/useReviewPage";
 import AtsPanel from "@/components/review/AtsPanel";
@@ -13,6 +13,8 @@ import PreviewView from "@/components/review/PreviewView";
 export default function ReviewPage() {
   const { applicationId } = useParams() as { applicationId: string };
   const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
+  const autoDownload = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("action") === "download";
+  const hasAutoDownloaded = useRef(false);
 
   const {
     result,
@@ -50,6 +52,14 @@ export default function ReviewPage() {
     clearExportError,
     clearSuccessMessage,
   } = useReviewPage(applicationId);
+
+  // Auto-trigger PDF download when navigated here with ?action=download
+  useEffect(() => {
+    if (autoDownload && !loading && result && !hasAutoDownloaded.current) {
+      hasAutoDownloaded.current = true;
+      handleDownloadPdf();
+    }
+  }, [autoDownload, loading, result, handleDownloadPdf]);
 
   if (loading) {
     return (

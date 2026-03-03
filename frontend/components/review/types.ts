@@ -83,7 +83,7 @@ export interface TailorResult {
   status: string;
 }
 
-export type BulletDecision = "accept" | "reject" | "edit";
+export type BulletDecision = "accept" | "reject" | "edit" | "pending";
 
 export interface BulletState {
   decision: BulletDecision;
