@@ -12,7 +12,7 @@ interface VariantItem {
   needs_review?: boolean;
   variant_group_id?: string | null;
   is_primary_variant?: boolean;
-  bullets?: unknown[] | null;
+  bullets?: unknown[] | Record<string, unknown> | null;
 }
 
 interface ExperienceCardProps<T extends VariantItem> {
@@ -27,7 +27,7 @@ interface ExperienceCardProps<T extends VariantItem> {
   onEditBullets?: (id: string, bullets: string[]) => Promise<void>;
 }
 
-function extractBulletStrings(raw: unknown[] | null | undefined): string[] {
+function extractBulletStrings(raw: unknown[] | Record<string, unknown> | null | undefined): string[] {
   if (!raw || !Array.isArray(raw)) return [];
   return raw.map((b) => {
     if (typeof b === "string") return b;
