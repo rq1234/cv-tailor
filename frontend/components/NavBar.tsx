@@ -81,7 +81,7 @@ export default function NavBar() {
               className="hidden sm:inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
               title="New Application"
             >
-              <Plus className="h-3.5 w-3.5" /> New
+              <Plus className="h-3.5 w-3.5" /> New Application
             </Link>
             <UserMenu />
             <button
