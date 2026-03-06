@@ -186,6 +186,95 @@ export const pipelineStatusSchema = z.object({
   cv_version_id: z.string().uuid().nullable(),
 });
 
+// ── Tailor Result ──────────────────────────────────────────────────────
+// Plain TypeScript interfaces for the tailoring pipeline response.
+// These are the single source of truth; @/components/review/types re-exports them.
+
+export interface TailoredBullet {
+  text: string;
+  has_placeholder: boolean;
+  outcome_type: string;
+}
+
+export interface ExperienceDiff {
+  type?: "experience" | "project" | "activity";
+  original_bullets: string[];
+  suggested_bullets: (string | TailoredBullet)[];
+  changes_made: string[];
+  confidence: number;
+  requirements_addressed?: string[];
+  coaching_note?: string;
+}
+
+export interface AtsWarning {
+  field: string;
+  issue: string;
+  suggestion: string;
+}
+
+export interface ExperienceMeta {
+  company: string | null;
+  role_title: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  is_current: boolean;
+}
+
+export interface ProjectMeta {
+  name: string | null;
+  description: string | null;
+  date_start: string | null;
+  date_end: string | null;
+}
+
+export interface ActivityMeta {
+  organization: string | null;
+  role_title: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  is_current: boolean;
+}
+
+export interface EducationData {
+  id: string;
+  institution: string | null;
+  degree: string | null;
+  grade: string | null;
+  location: string | null;
+  date_start: string | null;
+  date_end: string | null;
+  achievements: string[];
+  modules: string[];
+}
+
+export interface SimilarApplication {
+  id: string;
+  company_name: string;
+  role_title: string | null;
+  ats_score: number | null;
+  domain: string | null;
+  created_at: string;
+}
+
+export interface TailorResult {
+  cv_version_id: string;
+  application_id: string;
+  company_name?: string;
+  role_title?: string | null;
+  diff_json: Record<string, ExperienceDiff>;
+  experience_meta: Record<string, ExperienceMeta>;
+  project_meta: Record<string, ProjectMeta>;
+  activity_meta: Record<string, ActivityMeta>;
+  education_data: EducationData[];
+  skills_data: Record<string, string[]>;
+  ats_score?: number;
+  ats_warnings?: AtsWarning[];
+  baseline_ats_score?: number;
+  baseline_ats_warnings?: AtsWarning[];
+  similar_applications?: SimilarApplication[];
+  status: string;
+}
+
 // ── Types ──────────────────────────────────────────────────────────────
 export type ReviewItem = z.infer<typeof reviewItemSchema>;
 export type UnclassifiedBlock = z.infer<typeof unclassifiedBlockSchema>;

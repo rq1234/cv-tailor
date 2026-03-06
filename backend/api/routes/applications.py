@@ -12,10 +12,11 @@ from slowapi.util import get_remote_address
 from sqlalchemy import delete, func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from openai import AsyncOpenAI
-
 from backend.api.auth import get_current_user
+from backend.clients import get_openai_client
 from backend.api.db_helpers import delete_or_404, get_or_404
+from backend.config import get_settings
+from backend.enums import ApplicationStatus
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvProfile, CvVersion, Education, WorkExperience
 from backend.schemas.pydantic import ApplicationCreate, ApplicationOut, ApplicationUpdate
@@ -26,7 +27,6 @@ limiter = Limiter(key_func=get_remote_address)
 
 ALLOWED_IMAGE_TYPES = {"image/png", "image/jpeg", "image/webp", "image/gif"}
 MAX_IMAGE_SIZE = 20 * 1024 * 1024  # 20 MB
-MAX_APPLICATIONS_PER_USER = 20
 
 
 @router.get("", response_model=list[ApplicationOut])
@@ -54,10 +54,11 @@ async def create_application(
         select(func.count(Application.id)).where(Application.user_id == user_id)
     )
     application_count = count_result.scalar_one()
-    if application_count >= MAX_APPLICATIONS_PER_USER:
+    max_apps = get_settings().max_applications_per_user
+    if application_count >= max_apps:
         raise HTTPException(
             status_code=400,
-            detail=f"Application limit reached ({MAX_APPLICATIONS_PER_USER}). Delete an old application to create a new one.",
+            detail=f"Application limit reached ({max_apps}). Delete an old application to create a new one.",
         )
 
     app = Application(
@@ -67,7 +68,7 @@ async def create_application(
         jd_raw=body.jd_raw,
         jd_source=body.jd_source,
         jd_url=body.jd_url,
-        status="draft",
+        status=ApplicationStatus.DRAFT,
     )
     db.add(app)
     await db.commit()
@@ -116,9 +117,6 @@ async def get_application(
     return ApplicationOut.model_validate(app)
 
 
-VALID_OUTCOMES = {"applied", "interview", "offer", "rejected", "withdrawn"}
-
-
 @router.patch("/{application_id}", response_model=ApplicationOut)
 async def update_application(
     application_id: uuid.UUID,
@@ -127,8 +125,6 @@ async def update_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Update outcome for an application."""
-    if body.outcome is not None and body.outcome not in VALID_OUTCOMES:
-        raise HTTPException(status_code=400, detail=f"Invalid outcome. Must be one of: {', '.join(sorted(VALID_OUTCOMES))}")
     app = await get_or_404(db, Application, application_id, user_id, "Application not found")
     app.outcome = body.outcome
     if body.notes is not None:
@@ -496,9 +492,10 @@ RULES:
 - Match tone to domain: {domain or "professional"}
 """
 
-    client = AsyncOpenAI()
+    client = get_openai_client()
+    settings = get_settings()
     response = await client.beta.chat.completions.parse(
-        model="gpt-4o",
+        model=settings.model_name,
         messages=[{"role": "user", "content": prompt}],
         response_format=_LetterParts,
         max_tokens=1600,

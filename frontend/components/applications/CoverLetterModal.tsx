@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { CoverLetterParts } from "@/hooks/useApplicationsList";
 import { api } from "@/lib/api";
+import { useClickOutside } from "@/hooks/useClickOutside";
 
 interface CoverLetterModalProps {
   text: string | null;
@@ -46,13 +47,7 @@ export default function CoverLetterModal({ text, parts, loading, onClose }: Cove
     }
   }, [parts]);
 
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [onClose]);
+  useClickOutside(ref, onClose);
 
   const currentParts: CoverLetterParts | null = parts
     ? { ...parts, paragraphs: editedParas, closing: editedClosing }

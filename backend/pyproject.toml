@@ -29,6 +29,10 @@ dependencies = [
     "uvicorn[standard]>=0.40.0",
 ]
 
+[tool.setuptools.packages.find]
+where = [".."]
+include = ["backend*"]
+
 [dependency-groups]
 dev = [
     "pytest>=9.0.2",

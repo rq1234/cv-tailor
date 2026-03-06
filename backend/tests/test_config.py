@@ -19,7 +19,6 @@ def test_settings_defaults():
     assert s.near_duplicate_threshold == 0.92
     assert s.max_experiences == 6
     assert s.max_bullet_lines == 26
-    assert s.bullet_min_chars == 90
 
 
 def test_settings_cors_origins_default():

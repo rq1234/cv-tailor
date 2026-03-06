@@ -3,11 +3,11 @@
 import { useCallback, useState } from "react";
 import { api } from "@/lib/api";
 import { applicationSchema, type Application } from "@/lib/schemas";
+import { useAsyncState } from "./useAsyncState";
 
 export function useApplication() {
   const [application, setApplication] = useState<Application | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+  const { loading, error, run } = useAsyncState();
 
   const createApplication = useCallback(
     async (data: {
@@ -17,42 +17,24 @@ export function useApplication() {
       jd_source?: string;
       jd_url?: string;
     }) => {
-      setLoading(true);
-      setError(null);
-      try {
+      return run(async () => {
         const result = await api.post<Application>("/api/applications", data);
         const validated = applicationSchema.parse(result);
         setApplication(validated);
         return validated;
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : "Failed to create application";
-        setError(message);
-        return null;
-      } finally {
-        setLoading(false);
-      }
+      }, "Failed to create application");
     },
-    []
+    [run]
   );
 
   const fetchApplication = useCallback(async (id: string) => {
-    setLoading(true);
-    setError(null);
-    try {
+    return run(async () => {
       const result = await api.get<Application>(`/api/applications/${id}`);
       const validated = applicationSchema.parse(result);
       setApplication(validated);
       return validated;
-    } catch (err) {
-      const message =
-        err instanceof Error ? err.message : "Failed to fetch application";
-      setError(message);
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
+    }, "Failed to fetch application");
+  }, [run]);
 
   return { application, loading, error, createApplication, fetchApplication };
 }

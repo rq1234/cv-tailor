@@ -224,7 +224,7 @@ class Application(Base):
     jd_raw: Mapped[str] = mapped_column(Text, nullable=False)
     jd_parsed: Mapped[dict | None] = mapped_column(JSONB)
     jd_source: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(Text, default="draft")
+    status: Mapped[str] = mapped_column(Text, default="draft", index=True)
     outcome: Mapped[str | None] = mapped_column(Text, nullable=True)
     include_report: Mapped[bool] = mapped_column(Boolean, default=False)
     jd_url: Mapped[str | None] = mapped_column(Text, nullable=True)
@@ -253,7 +253,7 @@ class CvVersion(Base):
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=uuid.uuid4)
     user_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), nullable=False, index=True)
     application_id: Mapped[uuid.UUID | None] = mapped_column(
-        UUID(as_uuid=True), ForeignKey("applications.id")
+        UUID(as_uuid=True), ForeignKey("applications.id"), index=True
     )
     selected_experiences: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)))
     selected_education: Mapped[list | None] = mapped_column(ARRAY(UUID(as_uuid=True)))

@@ -19,21 +19,28 @@ from backend.agents.cv_tailor import tailor_activities, tailor_experiences, tail
 from backend.agents.gap_analyzer import analyze_gaps
 from backend.agents.graph import run_pipeline
 from backend.api.auth import get_current_user
-from backend.api.db_helpers import fetch_active_rules_text
+from backend.api.db_helpers import (
+    fetch_active_rules_text,
+    fetch_experience_meta,
+    fetch_project_meta,
+    fetch_activity_meta,
+    fetch_education_data,
+    fetch_skills_data,
+    find_similar_applications,
+)
+from backend.config import get_settings
 from backend.models.database import get_db
-from backend.models.tables import Activity, Application, CvVersion, Education, Project, Skill, WorkExperience
-from backend.schemas.pydantic import PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
+from backend.models.tables import Activity, Application, CvVersion, Project, WorkExperience
+from backend.schemas.pydantic import AcceptChangesRequest, CvVersionOut, PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
 
 logger = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/tailor", tags=["tailor"])
 limiter = Limiter(key_func=get_remote_address)
 
-# Maximum time a single pipeline run is allowed to take (10 minutes).
-_PIPELINE_TIMEOUT_S = 600
-
-# Stale-lock cutoff: a pipeline_started_at older than this is considered abandoned.
-_LOCK_TTL_S = _PIPELINE_TIMEOUT_S + 60  # 660 seconds
+_settings = get_settings()
+_PIPELINE_TIMEOUT_S = _settings.pipeline_timeout_s
+_LOCK_TTL_S = _settings.pipeline_stale_lock_s
 
 
 @router.post("/run")
@@ -214,225 +221,6 @@ async def run_tailoring(
     return EventSourceResponse(event_generator())
 
 
-# ── Private helpers for get_tailor_result ──────────────────────────────────
-
-
-async def _find_similar_applications(
-    db: AsyncSession,
-    current_app: Application,
-    user_id: uuid.UUID,
-) -> list[dict]:
-    """Return up to 3 past applications similar to the current one by domain + keyword overlap."""
-    if not current_app.jd_parsed or not isinstance(current_app.jd_parsed, dict):
-        return []
-
-    current_domain = (current_app.jd_parsed.get("domain") or "").lower()
-    current_keywords = set(
-        kw.lower() for kw in (current_app.jd_parsed.get("keywords") or [])
-    )
-
-    # Fetch all other applications with a parsed JD and status=complete/review
-    other_apps_result = await db.execute(
-        select(Application).where(
-            Application.user_id == user_id,
-            Application.id != current_app.id,
-            Application.jd_parsed.isnot(None),
-            Application.status.in_(["review", "complete"]),
-        )
-    )
-    other_apps = other_apps_result.scalars().all()
-
-    # Fetch latest ATS score for each
-    if not other_apps:
-        return []
-
-    other_app_ids = [a.id for a in other_apps]
-    cv_result = await db.execute(
-        select(CvVersion.application_id, CvVersion.ats_score)
-        .where(
-            CvVersion.user_id == user_id,
-            CvVersion.application_id.in_(other_app_ids),
-            CvVersion.ats_score.isnot(None),
-        )
-        .order_by(CvVersion.application_id, CvVersion.created_at.desc())
-        .distinct(CvVersion.application_id)
-    )
-    ats_by_app = {str(app_id): score for app_id, score in cv_result.all()}
-
-    # Score each app: +2 for domain match, +keyword Jaccard * 10
-    scored = []
-    for other in other_apps:
-        if not other.jd_parsed or not isinstance(other.jd_parsed, dict):
-            continue
-        other_domain = (other.jd_parsed.get("domain") or "").lower()
-        other_keywords = set(
-            kw.lower() for kw in (other.jd_parsed.get("keywords") or [])
-        )
-        score = 0.0
-        if current_domain and current_domain == other_domain:
-            score += 2.0
-        if current_keywords and other_keywords:
-            union = current_keywords | other_keywords
-            intersection = current_keywords & other_keywords
-            score += (len(intersection) / len(union)) * 10.0 if union else 0.0
-        if score > 0:
-            scored.append((score, other))
-
-    scored.sort(key=lambda x: x[0], reverse=True)
-    top = scored[:3]
-
-    return [
-        {
-            "id": str(a.id),
-            "company_name": a.company_name,
-            "role_title": a.role_title,
-            "ats_score": ats_by_app.get(str(a.id)),
-            "domain": (a.jd_parsed.get("domain") or None) if a.jd_parsed else None,
-            "created_at": a.created_at.isoformat(),
-        }
-        for _, a in top
-    ]
-
-async def _fetch_experience_meta(
-    db: AsyncSession,
-    exp_ids: list[str],
-    user_id: uuid.UUID,
-) -> dict[str, dict]:
-    if not exp_ids:
-        return {}
-    exp_uuids = [uuid.UUID(eid) for eid in exp_ids]
-    result = await db.execute(
-        select(WorkExperience).where(
-            WorkExperience.id.in_(exp_uuids),
-            WorkExperience.user_id == user_id,
-        )
-    )
-    return {
-        str(exp.id): {
-            "company": exp.company,
-            "role_title": exp.role_title,
-            "date_start": exp.date_start.isoformat() if exp.date_start else None,
-            "date_end": exp.date_end.isoformat() if exp.date_end else None,
-            "is_current": exp.is_current,
-        }
-        for exp in result.scalars()
-    }
-
-
-async def _fetch_project_meta(
-    db: AsyncSession,
-    proj_ids: list[str],
-    user_id: uuid.UUID,
-) -> dict[str, dict]:
-    if not proj_ids:
-        return {}
-    proj_uuids = [uuid.UUID(pid) for pid in proj_ids]
-    result = await db.execute(
-        select(Project).where(
-            Project.id.in_(proj_uuids),
-            Project.user_id == user_id,
-        )
-    )
-    return {
-        str(proj.id): {
-            "name": proj.name,
-            "description": proj.description,
-            "date_start": proj.date_start.isoformat() if proj.date_start else None,
-            "date_end": proj.date_end.isoformat() if proj.date_end else None,
-        }
-        for proj in result.scalars()
-    }
-
-
-async def _fetch_activity_meta(
-    db: AsyncSession,
-    act_ids: list[str],
-    user_id: uuid.UUID,
-) -> dict[str, dict]:
-    if not act_ids:
-        return {}
-    act_uuids = [uuid.UUID(aid) for aid in act_ids]
-    result = await db.execute(
-        select(Activity).where(
-            Activity.id.in_(act_uuids),
-            Activity.user_id == user_id,
-        )
-    )
-    return {
-        str(act.id): {
-            "organization": act.organization,
-            "role_title": act.role_title,
-            "date_start": act.date_start.isoformat() if act.date_start else None,
-            "date_end": act.date_end.isoformat() if act.date_end else None,
-            "is_current": act.is_current,
-        }
-        for act in result.scalars()
-    }
-
-
-async def _fetch_education_data(
-    db: AsyncSession,
-    edu_ids: list,
-    user_id: uuid.UUID,
-) -> list[dict]:
-    if not edu_ids:
-        return []
-    result = await db.execute(
-        select(Education).where(
-            Education.id.in_(edu_ids),
-            Education.user_id == user_id,
-        )
-    )
-    rows = []
-    for edu in result.scalars():
-        achievements = []
-        if isinstance(edu.achievements, list):
-            achievements = edu.achievements
-        elif isinstance(edu.achievements, dict):
-            achievements = edu.achievements.get("items", [])
-        modules = []
-        if isinstance(edu.modules, list):
-            modules = edu.modules
-        elif isinstance(edu.modules, dict):
-            modules = edu.modules.get("items", [])
-        rows.append({
-            "id": str(edu.id),
-            "institution": edu.institution,
-            "degree": edu.degree,
-            "grade": edu.grade,
-            "location": edu.location,
-            "date_start": edu.date_start.isoformat() if edu.date_start else None,
-            "date_end": edu.date_end.isoformat() if edu.date_end else None,
-            "achievements": achievements,
-            "modules": modules,
-        })
-    return rows
-
-
-async def _fetch_skills_data(
-    db: AsyncSession,
-    skill_ids: list,
-    user_id: uuid.UUID,
-) -> dict[str, list[str]]:
-    if not skill_ids:
-        return {}
-    result = await db.execute(
-        select(Skill).where(
-            Skill.id.in_(skill_ids),
-            Skill.user_id == user_id,
-        )
-    )
-    skills_by_id = {s.id: s for s in result.scalars()}
-    skills_data: dict[str, list[str]] = {}
-    for sid in skill_ids:
-        skill = skills_by_id.get(sid)
-        if not skill:
-            continue
-        cat = (skill.category or "Other").capitalize()
-        skills_data.setdefault(cat, []).append(skill.name)
-    return skills_data
-
-
 # ── Routes ─────────────────────────────────────────────────────────────────
 
 @router.get("/result/{application_id}")
@@ -476,14 +264,14 @@ async def get_tailor_result(
 
     # SQLAlchemy AsyncSession does not allow concurrent operations on the same session;
     # queries must run sequentially.
-    experience_meta = await _fetch_experience_meta(db, exp_ids, user_id)
-    project_meta = await _fetch_project_meta(db, proj_ids, user_id)
-    activity_meta = await _fetch_activity_meta(db, act_ids, user_id)
-    education_data = await _fetch_education_data(db, edu_ids, user_id)
-    skills_data = await _fetch_skills_data(db, skill_ids, user_id)
+    experience_meta = await fetch_experience_meta(db, exp_ids, user_id)
+    project_meta = await fetch_project_meta(db, proj_ids, user_id)
+    activity_meta = await fetch_activity_meta(db, act_ids, user_id)
+    education_data = await fetch_education_data(db, edu_ids, user_id)
+    skills_data = await fetch_skills_data(db, skill_ids, user_id)
 
     # Find similar past applications by domain + keyword overlap
-    similar_applications = await _find_similar_applications(db, app, user_id)
+    similar_applications = await find_similar_applications(db, app, user_id)
 
     return {
         "cv_version_id": str(cv_version.id),
@@ -555,10 +343,39 @@ async def get_pipeline_status(
     )
 
 
+@router.get("/versions/{application_id}", response_model=list[CvVersionOut])
+async def list_cv_versions(
+    application_id: uuid.UUID,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Return the last 10 CV versions for an application, newest first."""
+    # Verify ownership
+    app_result = await db.execute(
+        select(Application).where(
+            Application.id == application_id,
+            Application.user_id == user_id,
+        )
+    )
+    if not app_result.scalar_one_or_none():
+        raise HTTPException(status_code=404, detail="Application not found")
+
+    versions_result = await db.execute(
+        select(CvVersion)
+        .where(
+            CvVersion.application_id == application_id,
+            CvVersion.user_id == user_id,
+        )
+        .order_by(CvVersion.created_at.desc())
+        .limit(10)
+    )
+    return versions_result.scalars().all()
+
+
 @router.put("/cv-versions/{version_id}/accept-changes")
 async def accept_changes(
     version_id: uuid.UUID,
-    body: dict,
+    body: AcceptChangesRequest,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
 ):
@@ -573,15 +390,8 @@ async def accept_changes(
     if not cv_version:
         raise HTTPException(status_code=404, detail="CV version not found")
 
-    accepted_changes = body.get("accepted_changes", {})
-    rejected_changes = body.get("rejected_changes", {})
-
-    # Validate accepted_changes structure
-    if not isinstance(accepted_changes, dict):
-        raise HTTPException(status_code=400, detail="accepted_changes must be a dictionary")
-
-    if not isinstance(rejected_changes, dict):
-        raise HTTPException(status_code=400, detail="rejected_changes must be a dictionary")
+    accepted_changes = body.accepted_changes
+    rejected_changes = body.rejected_changes
 
     _MAX_BULLET_LEN = 600  # ~4 wrapped lines; anything longer would break LaTeX pagination
 

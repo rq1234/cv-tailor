@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 from difflib import SequenceMatcher
 
 from pydantic import BaseModel, Field
@@ -10,199 +11,7 @@ from backend.clients import get_openai_client
 from backend.config import get_settings
 from backend.utils import extract_bullet_texts, split_description_to_bullets
 
-# ---------------------------------------------------------------------------
-# Domain-specific tailoring guidance
-# Distilled from strong real-world CVs per industry.
-# ---------------------------------------------------------------------------
-
-DOMAIN_GUIDANCE: dict[str, str] = {
-    "tech": """\
-## Domain-Specific Norms: Technology / Software Engineering
-Apply these norms on top of the general rules above.
-
-**Action Verbs (prefer):** Architected, Engineered, Built, Implemented, Deployed, Automated, Designed, Launched, Shipped, Migrated, Integrated, Optimised
-
-**Lead with:** Specific named technologies + quantified scale/impact
-- Pattern: "[Verb] [system/tool] using [Tech A, Tech B], [reducing/achieving/improving] [metric]"
-- Good: "Engineered high-performance CLI tool in Go, cutting logging infrastructure cost by 50% with a self-updating binary"
-- Good: "Implemented dataset using Scala and Apache Beam APIs, achieving 60% compression vs raw metadata source"
-- Good: "Developed scalable event-driven AWS pipeline (CDK, API Gateway, Lambda, SQS), serving 500,000+ events daily while reducing AWS costs by 50%"
-
-**Always embed tech names inline** — never appended at the end as a list. ATS systems and recruiters Ctrl+F for exact tech names.
-
-**Preferred scale language:** "500,000+ events daily", "over 200 students", "1.88 million records", "reducing latency by X%", "99.9% uptime", "X% compression"
-
-**Quantified outcome formats to use:**
-- Cost: "reducing AWS costs by 50%", "cutting infrastructure cost by 50%"
-- Speed: "improving data refresh rates by 50%", "reducing metric reporting time by 95%"
-- Scale: "serving 500,000+ events daily", "automating 100% of the backend API test suite"
-- Accuracy: "reaching an accuracy of 83%"
-- Efficiency: "reduced customer time-to-analysis by 75%", "reduced manual testing efforts by 80%"
-
-**Avoid:** vague statements without tech specifics; "responsible for"; listing tech at the end of the bullet instead of inline in the action.
-""",
-
-    "finance": """\
-## Domain-Specific Norms: Finance / Investment Banking
-Apply these norms on top of the general rules above.
-
-**Action Verbs (prefer):** Advised, Executed, Modeled, Analyzed, Prepared, Coordinated, Originated, Evaluated, Structured, Supported, Performed, Constructed
-
-**Lead with:** Deal size ($XXXm / $XXXBn) or transaction type when the original mentions a deal
-- Pattern: "Member of deal team on $[X]B [transaction type] advising [Target/Acquirer]"
-- Pattern: "[Verb] [financial analysis type] for [deal context/client tier]"
-- Good: "Member of deal team on $3.2 billion acquisition of a publicly traded company by a large-cap private equity firm"
-- Good: "Built dynamic LBO model with multiple operating and pro forma capital structure scenarios to determine private equity sponsor affordability based on projected IRR and LCFV Yield"
-- Good: "Prepared CIM and pitch book for $700MM debt financing transaction in the energy sector"
-
-**Finance vocabulary — use naturally where truthful:**
-- Documents: CIM (Confidential Information Memorandum), pitch book, information memorandum, teaser, management presentation
-- Analysis types: LBO (Leveraged Buyout), M&A, DCF (Discounted Cash Flow), precedent transactions, comparable companies (comps), accretion/dilution analysis, pro forma, sensitivity analysis, operating model, 3-statement model
-- Financial metrics: IRR, EBITDA, EBITDA margins, revenue, COGS, capital structure, debt drawdown, covenant compliance
-- Modeling verbs: built, constructed, prepared, performed, ran
-
-**Tools — reference only if truthful:** Bloomberg, CapitalIQ, Excel (financial modeling), PowerPoint (pitch materials)
-
-**Outcome proxies when % metrics are not available:**
-- Deal size: "$700MM transaction", "$3.2 billion acquisition"
-- Deal status: "Closed July 2020", "Active", "Pending"
-- Client/counterparty tier: "publicly traded company", "Fortune 500", "PE sponsor"
-- Geographic scope: "across Americas, Europe and Asia-Pacific", "across 37 product lines"
-
-**Avoid:** Technology-style % efficiency metrics where not applicable to the work described; starting bullets with "Responsible for" — always reframe to active voice ("Prepared" instead of "Responsible for preparing").
-""",
-
-    "consulting": """\
-## Domain-Specific Norms: Management Consulting
-Apply these norms on top of the general rules above.
-
-**Action Verbs (prefer):** Advised, Delivered, Structured, Synthesised, Developed, Presented, Facilitated, Coordinated, Diagnosed, Recommended, Designed, Led
-
-**Lead with:** Client impact or business outcome
-- Pattern: "[Verb] [deliverable type] for [client context], [resulting in/enabling] [business outcome]"
-- Good: "Structured go-to-market diagnostic for a PE-backed retail client, identifying $4m cost reduction opportunity"
-- Good: "Developed recommendations across 5 workstreams for a Fortune 500 consumer goods client, enabling $12m annual savings"
-
-**Consulting vocabulary — use naturally where truthful:**
-- Structure terms: workstream, deliverable, MECE framework, top-down, structured problem-solving, hypothesis-driven
-- Process terms: diagnostic, discovery phase, client engagement, stakeholder alignment, steering committee, executive presentation
-- Output terms: recommendations, board deck, business case, implementation roadmap
-
-**Outcome formats to prefer:**
-- "$Xm cost reduction", "X% efficiency gain", "X new markets entered", "X% improvement in [metric]"
-- Team/scope: "across [X] business units", "for [Fortune 500 / PE-backed / government] client", "in [X] countries"
-
-**Avoid:** Tech-heavy descriptions (unless in tech consulting); "responsible for"; bullets with no outcome or scope signal.
-""",
-
-    "quant": """\
-## Domain-Specific Norms: Quantitative Finance / Algorithmic Trading
-Apply these norms on top of the general rules above.
-
-**Action Verbs (prefer):** Developed, Researched, Implemented, Backtested, Deployed, Optimised, Modeled, Calibrated, Engineered, Built, Analysed
-
-**Lead with:** Strategy/model performance OR technical achievement — whichever is stronger
-- Pattern (research): "[Verb] [strategy/model type] using [method/tech], achieving [performance metric]"
-- Pattern (engineering): "[Verb] [system component] in [language], achieving [latency/throughput metric]"
-- Good: "Developed mean-reversion equity strategy using Python and scikit-learn, achieving 1.4 Sharpe ratio over 3-year backtest"
-- Good: "Built cross-sectional factor model on 1,000+ US equities using XGBoost and SHAP, generating [X]% annualised alpha"
-- Good: "Implemented low-latency order execution engine in C++, achieving <50μs round-trip latency on co-located infrastructure"
-- Good: "Backtested momentum strategy on 10 years of tick data, achieving Sharpe of 1.8 with max drawdown of 12%"
-
-**Quant vocabulary — use naturally where truthful:**
-- Strategy types: alpha generation, signal research, momentum, mean reversion, statistical arbitrage (stat arb), pairs trading, market making, execution optimisation, delta hedging
-- Model types: factor model, covariance matrix estimation, regime detection, volatility surface, Monte Carlo simulation, GARCH, PCA, Kalman filter
-- Performance metrics: Sharpe ratio, Sortino ratio, information ratio, maximum drawdown, annualised alpha/return, P&L, hit rate, win/loss ratio, turnover
-- Data: tick data, order book (L2/L3), OHLCV, alternative data, sentiment data, corporate actions
-- Execution: FIX protocol, market impact, TWAP/VWAP, slippage, co-location, latency (μs/ms)
-
-**Tools — reference only if truthful:** Python (pandas, numpy, scipy, statsmodels, scikit-learn), C++, R, MATLAB, kdb+/q, Bloomberg, Refinitiv/Eikon, QuantLib, Julia
-
-**Performance outcome formats (highest priority — use these when available):**
-- Strategy: "achieving 1.4 Sharpe ratio over [X]-year backtest", "generating [X]% annualised alpha", "with maximum drawdown of [X]%"
-- System: "<50μs round-trip latency", "processing 10M+ ticks/day", "[X]% reduction in slippage"
-- Deployment: "deployed to production managing $[X]m in AUM", "live since [date]"
-- Competition/selection: "1 of 80 students selected for Citadel Trading Invitational", "finalist in Jane Street ETC"
-
-**Avoid:** Generic IB vocabulary (pitchbooks, CIM) where not applicable; technology-style cost/user metrics as the primary outcome — quant bullets are judged on financial performance first, engineering scale second.
-""",
-}
-
-
-def _get_domain_guidance(domain: str) -> str:
-    """Map a JD domain string to domain-specific tailoring guidance.
-
-    Uses keyword matching so "investment banking" → finance, "algorithmic trading" → quant, etc.
-    Returns an empty string for unrecognised domains (graceful fallback).
-    Quant is checked FIRST because "quantitative finance" is more specific than "finance".
-    """
-    if not domain:
-        return ""
-    d = domain.lower()
-    # Quant / Trading — check BEFORE finance; "quantitative finance" → quant not generic finance
-    if any(
-        kw in d
-        for kw in (
-            "quant",
-            "algorithmic",
-            "algo trading",
-            "prop trading",
-            "trading",
-            "market making",
-            "systematic",
-            "high frequency",
-            "hft",
-            "statistical arbitrage",
-        )
-    ):
-        return DOMAIN_GUIDANCE["quant"]
-    # Finance / IB — check before tech because "financial technology" should → finance
-    if any(
-        kw in d
-        for kw in (
-            "finance",
-            "banking",
-            "investment",
-            "financial services",
-            "capital markets",
-            "private equity",
-            "asset management",
-            "hedge fund",
-            "venture capital",
-            "wealth management",
-        )
-    ):
-        return DOMAIN_GUIDANCE["finance"]
-    # Consulting
-    if any(
-        kw in d
-        for kw in (
-            "consulting",
-            "advisory",
-            "management consulting",
-        )
-    ):
-        return DOMAIN_GUIDANCE["consulting"]
-    # Tech / Software
-    if any(
-        kw in d
-        for kw in (
-            "tech",
-            "software",
-            "engineering",
-            "data",
-            "machine learning",
-            " ai",
-            "artificial intelligence",
-            "saas",
-            "cloud",
-            "cybersecurity",
-            "security",
-            "product",
-        )
-    ):
-        return DOMAIN_GUIDANCE["tech"]
-    return ""
+from .domain_guidance import _get_domain_guidance
 
 
 class TailoredBullet(BaseModel):
@@ -301,7 +110,7 @@ async def _expand_short_bullet(
     _client = get_openai_client()
     _settings = get_settings()
     response = await _client.chat.completions.create(
-        model=_settings.model_name,
+        model=_settings.model_mini,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -370,7 +179,7 @@ async def _trim_just_over_line(
     _client = get_openai_client()
     _settings = get_settings()
     response = await _client.chat.completions.create(
-        model=_settings.model_name,
+        model=_settings.model_mini,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -430,7 +239,7 @@ async def _trim_long_bullet(
     _client = get_openai_client()
     _settings = get_settings()
     response = await _client.chat.completions.create(
-        model=_settings.model_name,
+        model=_settings.model_mini,
         messages=[
             {"role": "system", "content": system_prompt},
             {"role": "user", "content": user_message},
@@ -454,6 +263,51 @@ async def _trim_long_bullet(
         has_placeholder="[X]" in text,
         outcome_type=suggested.outcome_type,
     )
+
+
+def _build_jd_summary(jd_parsed: dict) -> str:
+    """Build a compact JD context string used in all tailoring prompts."""
+    key_responsibilities = jd_parsed.get("key_responsibilities", [])
+    return f"""
+Role: {jd_parsed.get('role_summary', 'N/A')}
+Domain: {jd_parsed.get('domain', 'N/A')}
+Seniority: {jd_parsed.get('seniority_level', 'N/A')}
+Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
+Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
+Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
+Keywords: {', '.join(jd_parsed.get('keywords', []))}
+Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
+"""
+
+
+async def _apply_length_refinements(
+    tailored_list: list,
+    jd_summary: str,
+    trim_low: int = 95,
+    trim_high: int = 135,
+) -> None:
+    """Run trim/expand corrections on all bullets in parallel, updating in-place."""
+    pending: list[tuple[int, int, object]] = []
+    for ei, entry in enumerate(tailored_list):
+        for bi, (orig, suggested) in enumerate(
+            zip(entry.original_bullets, entry.suggested_bullets)
+        ):
+            if trim_low <= len(suggested.text) <= trim_high:
+                coro = _trim_just_over_line(orig, suggested, jd_summary)
+            elif len(suggested.text) < 100:
+                coro = _expand_short_bullet(orig, suggested, jd_summary)
+            elif len(suggested.text) > 200:
+                coro = _trim_long_bullet(orig, suggested, jd_summary)
+            else:
+                continue
+            pending.append((ei, bi, coro))
+
+    if not pending:
+        return
+
+    results = await asyncio.gather(*[t[2] for t in pending])
+    for (ei, bi, _), result in zip(pending, results):
+        tailored_list[ei].suggested_bullets[bi] = result
 
 
 SYSTEM_PROMPT = """\
@@ -697,18 +551,7 @@ async def tailor_experiences(
             "bullets": bullets,
         })
 
-    # Build JD summary for context
-    key_responsibilities = jd_parsed.get('key_responsibilities', [])
-    jd_summary = f"""
-Role: {jd_parsed.get('role_summary', 'N/A')}
-Domain: {jd_parsed.get('domain', 'N/A')}
-Seniority: {jd_parsed.get('seniority_level', 'N/A')}
-Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
-Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
-Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
-Keywords: {', '.join(jd_parsed.get('keywords', []))}
-Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
-"""
+    jd_summary = _build_jd_summary(jd_parsed)
 
     user_message = f"""Target Job Description:
 {jd_summary}
@@ -771,25 +614,7 @@ Return all experiences."""
                 )
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
-    for te in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(te.original_bullets, te.suggested_bullets)
-        ):
-            # First: optimize bullets that waste half a line (95-135 chars)
-            if 95 <= len(suggested.text) <= 135:
-                te.suggested_bullets[i] = await _trim_just_over_line(
-                    orig, suggested, jd_summary,
-                )
-            # Then: expand short bullets (after potential trim)
-            elif len(te.suggested_bullets[i].text) < 100:
-                te.suggested_bullets[i] = await _expand_short_bullet(
-                    orig, te.suggested_bullets[i], jd_summary,
-                )
-            # Finally: trim very long bullets (after potential expansions)
-            elif len(te.suggested_bullets[i].text) > 200:
-                te.suggested_bullets[i] = await _trim_long_bullet(
-                    orig, te.suggested_bullets[i], jd_summary,
-                )
+    await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
 
     _clean_changes_made(tailored)
 
@@ -910,18 +735,7 @@ async def tailor_projects(
     if not proj_descriptions:
         return []
 
-    # Build JD summary
-    key_responsibilities = jd_parsed.get('key_responsibilities', [])
-    jd_summary = f"""
-Role: {jd_parsed.get('role_summary', 'N/A')}
-Domain: {jd_parsed.get('domain', 'N/A')}
-Seniority: {jd_parsed.get('seniority_level', 'N/A')}
-Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
-Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
-Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
-Keywords: {', '.join(jd_parsed.get('keywords', []))}
-Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
-"""
+    jd_summary = _build_jd_summary(jd_parsed)
 
     user_message = f"""Target Job Description:
 {jd_summary}
@@ -983,25 +797,7 @@ Return all projects."""
                 )
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
-    for tp in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(tp.original_bullets, tp.suggested_bullets)
-        ):
-            # First: optimize bullets that waste half a line (105-145 chars)
-            if 105 <= len(suggested.text) <= 145:
-                tp.suggested_bullets[i] = await _trim_just_over_line(
-                    orig, suggested, jd_summary,
-                )
-            # Then: expand short bullets (after potential trim)
-            elif len(tp.suggested_bullets[i].text) < 100:
-                tp.suggested_bullets[i] = await _expand_short_bullet(
-                    orig, tp.suggested_bullets[i], jd_summary,
-                )
-            # Finally: trim very long bullets (after potential expansions)
-            elif len(tp.suggested_bullets[i].text) > 200:
-                tp.suggested_bullets[i] = await _trim_long_bullet(
-                    orig, tp.suggested_bullets[i], jd_summary,
-                )
+    await _apply_length_refinements(tailored, jd_summary, trim_low=105, trim_high=145)
 
     _clean_changes_made(tailored)
 
@@ -1062,15 +858,7 @@ async def tailor_activities(
     if not act_descriptions:
         return []
 
-    # Build JD summary
-    jd_summary = f"""
-Role: {jd_parsed.get('role_summary', 'N/A')}
-Domain: {jd_parsed.get('domain', 'N/A')}
-Seniority: {jd_parsed.get('seniority_level', 'N/A')}
-Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
-Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
-Keywords: {', '.join(jd_parsed.get('keywords', []))}
-"""
+    jd_summary = _build_jd_summary(jd_parsed)
 
     user_message = f"""Target Job Description:
 {jd_summary}
@@ -1122,25 +910,7 @@ Return all activities."""
                 )
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
-    for ta in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(ta.original_bullets, ta.suggested_bullets)
-        ):
-            # First: optimize bullets that waste half a line (95-135 chars)
-            if 95 <= len(suggested.text) <= 135:
-                ta.suggested_bullets[i] = await _trim_just_over_line(
-                    orig, suggested, jd_summary,
-                )
-            # Then: expand short bullets (after potential trim)
-            elif len(ta.suggested_bullets[i].text) < 100:
-                ta.suggested_bullets[i] = await _expand_short_bullet(
-                    orig, ta.suggested_bullets[i], jd_summary,
-                )
-            # Finally: trim very long bullets (after potential expansions)
-            elif len(ta.suggested_bullets[i].text) > 200:
-                ta.suggested_bullets[i] = await _trim_long_bullet(
-                    orig, ta.suggested_bullets[i], jd_summary,
-                )
+    await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
 
     _clean_changes_made(tailored)
 

@@ -90,8 +90,8 @@ export function useApplicationsList() {
     try {
       await api.post(`/api/tailor/re-tailor/${appId}`);
       await fetchApplications();
-    } catch {
-      // fetchApplications will reflect actual state regardless
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Failed to start re-tailoring");
     } finally {
       setRetailoringId(null);
     }

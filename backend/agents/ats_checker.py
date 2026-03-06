@@ -50,7 +50,7 @@ async def check_ats_compliance(cv_json: dict) -> AtsCheckResult:
     client = get_openai_client()
     settings = get_settings()
     response = await client.beta.chat.completions.parse(
-        model=settings.model_name,
+        model=settings.model_mini,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
             {"role": "user", "content": f"Check this CV for ATS compliance:\n\n{cv_text}"},
