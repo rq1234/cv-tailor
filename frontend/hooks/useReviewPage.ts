@@ -1,15 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import {
-  type BulletDecision,
-  type BulletState,
   type ExperienceDiff,
   type TailorResult,
   bulletText,
   sortByDateDesc,
 } from "@/components/review/types";
+import { useReviewDecisions } from "./useReviewDecisions";
+import { useReviewExports } from "./useReviewExports";
 
 interface Counts {
   accepted: number;
@@ -19,308 +19,36 @@ interface Counts {
   total: number;
 }
 
-interface AcceptChangesPayload {
-  acceptedChanges: Record<string, string[] | unknown>;
-  rejectedChanges: Record<string, number[]>;
-}
-
-function buildChanges(
-  result: TailorResult,
-  decisions: Record<string, Record<number, BulletState>>,
-  manualEdits: Record<string, string>
-): AcceptChangesPayload {
-  const acceptedChanges: Record<string, string[] | unknown> = {};
-  const rejectedChanges: Record<string, number[]> = {};
-
-  for (const [expId, expDecisions] of Object.entries(decisions)) {
-    const diff = result.diff_json[expId];
-    if (!diff) continue;
-
-    const acceptedBullets: string[] = [];
-    const rejectedIndices: number[] = [];
-
-    for (const [idxStr, bullet] of Object.entries(expDecisions)) {
-      const idx = parseInt(idxStr);
-      if (bullet.decision === "accept" || bullet.decision === "pending") {
-        acceptedBullets.push(bullet.editedText ?? bulletText(diff.suggested_bullets[idx]));
-      } else if (bullet.decision === "edit" && bullet.editedText) {
-        acceptedBullets.push(bullet.editedText);
-      } else {
-        acceptedBullets.push(diff.original_bullets[idx] || bulletText(diff.suggested_bullets[idx]));
-        rejectedIndices.push(idx);
-      }
-    }
-
-    acceptedChanges[expId] = acceptedBullets;
-    if (rejectedIndices.length > 0) {
-      rejectedChanges[expId] = rejectedIndices;
-    }
-  }
-
-  // Manual edits for education
-  if (result.education_data) {
-    for (const edu of result.education_data) {
-      const achievements: string[] = [];
-      if (edu.achievements) {
-        for (let i = 0; i < edu.achievements.length; i++) {
-          achievements.push(manualEdits[`achievement_${edu.id}_${i}`] || String(edu.achievements[i]));
-        }
-      }
-      const modulesKey = `modules_${edu.id}`;
-      const modules = manualEdits[modulesKey]
-        ? manualEdits[modulesKey].split(",").map((m) => m.trim()).filter(Boolean)
-        : edu.modules ?? [];
-      acceptedChanges[`education_${edu.id}`] = { achievements, modules } as unknown;
-    }
-  }
-
-  // Manual edits for skills
-  if (result.skills_data) {
-    for (const [category, skills] of Object.entries(result.skills_data)) {
-      const key = `skills_${category}`;
-      acceptedChanges[`skills_${category}`] = manualEdits[key]
-        ? manualEdits[key].split(",").map((s) => s.trim()).filter(Boolean)
-        : skills;
-    }
-  }
-
-  return { acceptedChanges, rejectedChanges };
-}
-
-async function saveChanges(
-  result: TailorResult,
-  decisions: Record<string, Record<number, BulletState>>,
-  manualEdits: Record<string, string>
-) {
-  const changes = buildChanges(result, decisions, manualEdits);
-  await api.put(`/api/tailor/cv-versions/${result.cv_version_id}/accept-changes`, {
-    accepted_changes: changes.acceptedChanges,
-    rejected_changes: changes.rejectedChanges,
-  });
-}
-
 export function useReviewPage(applicationId: string) {
   const [result, setResult] = useState<TailorResult | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
   const [retailoring, setRetailoring] = useState(false);
-  const [exportError, setExportError] = useState<string | null>(null);
-  const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [showRetailorConfirm, setShowRetailorConfirm] = useState(false);
   const [regeneratingBullet, setRegeneratingBullet] = useState<{ expId: string; idx: number } | null>(null);
-  const [decisions, setDecisions] = useState<Record<string, Record<number, BulletState>>>({});
-  const [manualEdits, setManualEdits] = useState<Record<string, string>>({});
-  const [recoveredFromStorage, setRecoveredFromStorage] = useState(false);
-  const [rejectedVariants, setRejectedVariants] = useState<Record<string, Record<number, string[]>>>({});
-  const [storageWarning, setStorageWarning] = useState(false);
 
-  const storageKey = `cv-edits-${applicationId}`;
-  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const decisionState = useReviewDecisions(applicationId, result);
+  const { decisions, manualEdits, rejectedVariants, setRejectedVariants, setBulletDecision } = decisionState;
 
-  const makeInitialDecisions = (data: TailorResult) => {
-    const initial: Record<string, Record<number, BulletState>> = {};
-    for (const [expId, diff] of Object.entries(data.diff_json || {})) {
-      initial[expId] = {};
-      // Auto-accept high-confidence entries; mark low-confidence as pending for review
-      const autoAccept = diff.confidence >= 0.75;
-      for (let i = 0; i < diff.suggested_bullets.length; i++) {
-        initial[expId][i] = { decision: autoAccept ? "accept" : "pending" };
-      }
-    }
-    return initial;
-  };
+  const exportState = useReviewExports(result, decisions, manualEdits);
+  const { setExportError, setSuccessMessage } = exportState;
 
   const fetchResult = useCallback(async () => {
     try {
       const data = await api.get<TailorResult>(`/api/tailor/result/${applicationId}`);
       setResult(data);
-      const initial = makeInitialDecisions(data);
-
-      try {
-        const stored = localStorage.getItem(storageKey);
-        if (stored) {
-          const { decisions: storedDecisions, manualEdits: storedEdits } = JSON.parse(stored);
-          setDecisions({ ...initial, ...storedDecisions });
-          setManualEdits(storedEdits || {});
-          setRecoveredFromStorage(true);
-        } else {
-          setDecisions(initial);
-        }
-      } catch {
-        setDecisions(initial);
-      }
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load result");
     } finally {
       setLoading(false);
     }
-  }, [applicationId, storageKey]);
+  }, [applicationId]);
 
   useEffect(() => {
     fetchResult();
   }, [fetchResult]);
 
-  // Debounced localStorage auto-save
-  useEffect(() => {
-    if (!decisions || Object.keys(decisions).length === 0) return;
-    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
-    saveTimerRef.current = setTimeout(() => {
-      try {
-        localStorage.setItem(storageKey, JSON.stringify({ decisions, manualEdits }));
-        setStorageWarning(false);
-      } catch {
-        setStorageWarning(true);
-      }
-    }, 300);
-    return () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); };
-  }, [decisions, manualEdits, storageKey]);
-
-  // ── Decision helpers ────────────────────────────────────────────────
-  const setBulletDecision = useCallback((
-    expId: string, bulletIndex: number, decision: BulletDecision, editedText?: string
-  ) => {
-    setDecisions((prev) => ({
-      ...prev,
-      [expId]: {
-        ...prev[expId],
-        [bulletIndex]: {
-          decision,
-          editedText: editedText !== undefined ? editedText : prev[expId]?.[bulletIndex]?.editedText,
-        },
-      },
-    }));
-  }, []);
-
-  const setManualEdit = useCallback((key: string, value: string) => {
-    setManualEdits((prev) => ({ ...prev, [key]: value }));
-  }, []);
-
-  const acceptAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next: typeof prev = {};
-      for (const [expId, expDecs] of Object.entries(prev)) {
-        next[expId] = {};
-        for (const idx of Object.keys(expDecs)) {
-          next[expId][Number(idx)] = { decision: "accept" };
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  const rejectAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next: typeof prev = {};
-      for (const [expId, expDecs] of Object.entries(prev)) {
-        next[expId] = {};
-        for (const idx of Object.keys(expDecs)) {
-          next[expId][Number(idx)] = { decision: "reject" };
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  const resetAllDecisions = useCallback(() => {
-    if (!result) return;
-    setDecisions(makeInitialDecisions(result));
-  }, [result]);
-
-  const resetAllEdits = useCallback(() => setManualEdits({}), []);
-
-  // ── Export handlers ─────────────────────────────────────────────────
-  const handleDownloadPdf = useCallback(async () => {
-    if (!result) return;
-    setSaving(true);
-    setExportError(null);
-    setSuccessMessage(null);
-    try {
-      await saveChanges(result, decisions, manualEdits);
-      const { blob, filename } = await api.downloadFile(`/api/export/pdf/${result.cv_version_id}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "cv.pdf"; a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportError("PDF compilation failed. Try 'Open in Overleaf' instead.");
-    } finally {
-      setSaving(false);
-    }
-  }, [result, decisions, manualEdits]);
-
-  const handleDownloadLatex = useCallback(async () => {
-    if (!result) return;
-    setSaving(true);
-    setExportError(null);
-    setSuccessMessage(null);
-    try {
-      await saveChanges(result, decisions, manualEdits);
-      const { blob, filename } = await api.downloadFile(`/api/export/latex/${result.cv_version_id}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "cv.tex"; a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportError("Failed to download LaTeX file.");
-    } finally {
-      setSaving(false);
-    }
-  }, [result, decisions, manualEdits]);
-
-  const handleDownloadDocx = useCallback(async () => {
-    if (!result) return;
-    setSaving(true);
-    setExportError(null);
-    setSuccessMessage(null);
-    try {
-      await saveChanges(result, decisions, manualEdits);
-      const { blob, filename } = await api.downloadFilePost(`/api/export/docx/${result.cv_version_id}`);
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement("a");
-      a.href = url; a.download = filename || "cv.docx"; a.click();
-      URL.revokeObjectURL(url);
-    } catch {
-      setExportError("DOCX generation failed. Try downloading the PDF instead.");
-    } finally {
-      setSaving(false);
-    }
-  }, [result, decisions, manualEdits]);
-
-  const handleOpenOverleaf = useCallback(async () => {
-    if (!result) return;
-    setSaving(true);
-    setExportError(null);
-    setSuccessMessage(null);
-    try {
-      await saveChanges(result, decisions, manualEdits);
-      const data = await api.post<{ success: boolean; latex_content: string }>(
-        `/api/export/overleaf/${result.cv_version_id}`
-      );
-      if (data.latex_content) {
-        const form = document.createElement("form");
-        form.method = "POST";
-        form.action = "https://www.overleaf.com/docs";
-        form.target = "_blank";
-        const snip = document.createElement("input");
-        snip.type = "hidden"; snip.name = "snip"; snip.value = data.latex_content;
-        const name = document.createElement("input");
-        name.type = "hidden"; name.name = "snip_name"; name.value = "cv.tex";
-        form.append(snip, name);
-        document.body.appendChild(form);
-        form.submit();
-        document.body.removeChild(form);
-      } else {
-        setExportError("Failed to generate Overleaf content.");
-      }
-    } catch {
-      setExportError("Failed to open Overleaf.");
-    } finally {
-      setSaving(false);
-    }
-  }, [result, decisions, manualEdits]);
-
-  // ── Re-tailor ───────────────────────────────────────────────────────
+  // ── Re-tailor ─────────────────────────────────────────────────────────────
   const handleReTailor = useCallback(() => setShowRetailorConfirm(true), []);
   const cancelReTailor = useCallback(() => setShowRetailorConfirm(false), []);
 
@@ -338,9 +66,9 @@ export function useReviewPage(applicationId: string) {
     } finally {
       setRetailoring(false);
     }
-  }, [applicationId, fetchResult]);
+  }, [applicationId, fetchResult, setExportError, setSuccessMessage]);
 
-  // ── Bullet regeneration ─────────────────────────────────────────────
+  // ── Bullet regeneration ───────────────────────────────────────────────────
   const handleRegenerateBullet = useCallback(async (expId: string, idx: number, hint?: string) => {
     setRegeneratingBullet({ expId, idx });
     setExportError(null);
@@ -383,9 +111,9 @@ export function useReviewPage(applicationId: string) {
     } finally {
       setRegeneratingBullet(null);
     }
-  }, [applicationId, result, rejectedVariants, setBulletDecision]);
+  }, [applicationId, result, rejectedVariants, setBulletDecision, setExportError, setRejectedVariants]);
 
-  // ── Computed values ─────────────────────────────────────────────────
+  // ── Computed values ───────────────────────────────────────────────────────
   const counts: Counts = { accepted: 0, rejected: 0, edited: 0, pending: 0, total: 0 };
   for (const expDecisions of Object.values(decisions)) {
     for (const bullet of Object.values(expDecisions)) {
@@ -420,37 +148,22 @@ export function useReviewPage(applicationId: string) {
     result,
     loading,
     error,
-    decisions,
-    manualEdits,
-    rejectedVariants,
-    recoveredFromStorage,
-    storageWarning,
-    saving,
     retailoring,
-    regeneratingBullet,
-    exportError,
-    successMessage,
     showRetailorConfirm,
+    regeneratingBullet,
     counts,
     experienceDiffs,
     projectDiffs,
     activityDiffs,
-    setBulletDecision,
-    setManualEdit,
-    handleDownloadPdf,
-    handleDownloadLatex,
-    handleDownloadDocx,
-    handleOpenOverleaf,
+    // from useReviewDecisions
+    ...decisionState,
+    // from useReviewExports
+    ...exportState,
+    // re-tailor
     handleReTailor,
     confirmReTailor,
     cancelReTailor,
+    // bullet regen
     handleRegenerateBullet,
-    acceptAll,
-    rejectAll,
-    resetAllDecisions,
-    resetAllEdits,
-    dismissRecovered: () => setRecoveredFromStorage(false),
-    clearExportError: () => setExportError(null),
-    clearSuccessMessage: () => setSuccessMessage(null),
   };
 }

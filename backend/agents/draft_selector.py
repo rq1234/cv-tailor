@@ -10,6 +10,7 @@ from sqlalchemy import bindparam, func, select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from pgvector.sqlalchemy import Vector
 
+from backend.enums import SelectionMode
 from backend.models.tables import Activity, CvUpload, Education, Project, Skill, WorkExperience
 from backend.services.embedder import embed_text
 
@@ -35,7 +36,7 @@ async def select_experiences(
     jd_parsed: dict,
     user_id: uuid.UUID,
     max_pages: int = 1,
-    selection_mode: str = "library",
+    selection_mode: str = SelectionMode.LIBRARY,
 ) -> SelectionResult:
     """Select the most relevant experiences from the pool based on parsed JD.
 
@@ -49,7 +50,7 @@ async def select_experiences(
     """
     # Resolve upload filter for "latest_cv" mode
     latest_upload_id: uuid.UUID | None = None
-    if selection_mode == "latest_cv":
+    if selection_mode == SelectionMode.LATEST_CV:
         upload_result = await db.execute(
             select(CvUpload.id)
             .where(CvUpload.user_id == user_id)
@@ -59,7 +60,7 @@ async def select_experiences(
         latest_upload_id = upload_result.scalar_one_or_none()
         if latest_upload_id is None:
             logger.warning("latest_cv mode selected but no CvUpload found for user %s; falling back to library mode", user_id)
-            selection_mode = "library"
+            selection_mode = SelectionMode.LIBRARY
     # Build JD text for embedding
     jd_text_parts = []
     for field in ["required_skills", "nice_to_have_skills", "keywords"]:

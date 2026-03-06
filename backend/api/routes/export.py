@@ -125,10 +125,7 @@ async def export_cover_letter_pdf(
     except RuntimeError:
         raise HTTPException(status_code=500, detail="PDF compilation failed.")
 
-    company_raw = ""
-    lines = body.parts.get("company_lines", [])
-    if lines:
-        company_raw = lines[0]
+    company_raw = body.parts.company_lines[0] if body.parts.company_lines else ""
     company_slug = re.sub(r"[^\w\-]", "_", company_raw.lower())[:30] or "company"
 
     return Response(
@@ -136,6 +133,13 @@ async def export_cover_letter_pdf(
         media_type="application/pdf",
         headers={"Content-Disposition": f'attachment; filename="cover_letter_{company_slug}.pdf"'},
     )
+
+
+def _cv_filename(company: str | None, role: str | None, ext: str) -> str:
+    """Build a safe filename like cv_google_engineer.pdf from company/role strings."""
+    c = re.sub(r"[^\w\-]", "_", (company or "company").lower())[:50]
+    r = re.sub(r"[^\w\-]", "_", (role or "role").lower())[:50]
+    return f"cv_{c}_{r}.{ext}"
 
 
 async def _get_cv_version(
@@ -176,9 +180,7 @@ async def export_latex(
         )
         app = app_result.scalar_one_or_none()
         if app:
-            company = re.sub(r"[^\w\-]", "_", (app.company_name or "company").lower())[:50]
-            role = re.sub(r"[^\w\-]", "_", (app.role_title or "role").lower())[:50]
-            filename = f"cv_{company}_{role}.tex"
+            filename = _cv_filename(app.company_name, app.role_title, "tex")
 
     return Response(
         content=latex_content.encode("utf-8"),
@@ -207,9 +209,7 @@ async def export_pdf(
         )
         app = app_result.scalar_one_or_none()
         if app:
-            company = re.sub(r"[^\w\-]", "_", (app.company_name or "company").lower())[:50]
-            role = re.sub(r"[^\w\-]", "_", (app.role_title or "role").lower())[:50]
-            filename = f"cv_{company}_{role}.pdf"
+            filename = _cv_filename(app.company_name, app.role_title, "pdf")
 
     try:
         pdf_bytes = await compile_latex_to_pdf(latex_content)
@@ -247,9 +247,7 @@ async def export_docx(
         )
         app = app_result.scalar_one_or_none()
         if app:
-            company = re.sub(r"[^\w\-]", "_", (app.company_name or "company").lower())[:50]
-            role = re.sub(r"[^\w\-]", "_", (app.role_title or "role").lower())[:50]
-            filename = f"cv_{company}_{role}.docx"
+            filename = _cv_filename(app.company_name, app.role_title, "docx")
 
     try:
         docx_bytes = await generate_docx(db, cv_version, user_id)

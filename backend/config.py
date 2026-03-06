@@ -36,6 +36,7 @@ class Settings(BaseSettings):
 
     # ── OpenAI models ──
     model_name: str = "gpt-4o"
+    model_mini: str = "gpt-4o-mini"
     embedding_model: str = "text-embedding-3-small"
 
     # ── Temperature presets ──
@@ -60,10 +61,19 @@ class Settings(BaseSettings):
     max_skills: int = 25
 
     # ── Bullet length limits (characters) ──
-    bullet_min_chars: int = 90
     bullet_target_min: int = 100
     bullet_target_max: int = 130
     bullet_max_chars: int = 140
+
+    # ── Application limits ──
+    max_applications_per_user: int = 20
+
+    # ── Pipeline timeouts (seconds) ──
+    pipeline_timeout_s: int = 600
+    pipeline_stale_lock_s: int = 660
+
+    # ── Embedding cache ──
+    embedding_cache_size: int = 2000
 
     model_config = {"env_file": ".env", "extra": "ignore"}
 

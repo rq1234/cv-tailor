@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useParams } from "next/navigation";
 import { useReviewPage } from "@/hooks/useReviewPage";
+import { useReviewKeyboard, buildFlatBullets } from "@/hooks/useReviewKeyboard";
+import { useCvVersions } from "@/hooks/useCvVersions";
 import AtsPanel from "@/components/review/AtsPanel";
 import SimilarAppsPanel from "@/components/review/SimilarAppsPanel";
 import ReviewToolbar from "@/components/review/ReviewToolbar";
@@ -13,6 +15,9 @@ import PreviewView from "@/components/review/PreviewView";
 export default function ReviewPage() {
   const { applicationId } = useParams() as { applicationId: string };
   const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
+  const [focusedBulletIdx, setFocusedBulletIdx] = useState<number | null>(null);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const { versions, loading: versionsLoading, fetchVersions } = useCvVersions(applicationId);
   const autoDownload = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("action") === "download";
   const hasAutoDownloaded = useRef(false);
 
@@ -51,7 +56,19 @@ export default function ReviewPage() {
     dismissRecovered,
     clearExportError,
     clearSuccessMessage,
+    smartAccept,
   } = useReviewPage(applicationId);
+
+  const flatBullets = buildFlatBullets(experienceDiffs, projectDiffs, activityDiffs);
+  const focusedBullet = focusedBulletIdx !== null ? flatBullets[focusedBulletIdx] ?? null : null;
+
+  useReviewKeyboard({
+    flatBullets,
+    focusedIdx: focusedBulletIdx,
+    setFocusedIdx: setFocusedBulletIdx,
+    setBulletDecision,
+    decisions,
+  });
 
   // Auto-trigger PDF download when navigated here with ?action=download
   useEffect(() => {
@@ -100,6 +117,7 @@ export default function ReviewPage() {
         retailoring={retailoring}
         showRetailorConfirm={showRetailorConfirm}
         onAcceptAll={acceptAll}
+        onSmartAccept={result ? () => smartAccept(0.80, result.diff_json) : undefined}
         onRejectAll={rejectAll}
         onReTailor={handleReTailor}
         onConfirmReTailor={confirmReTailor}
@@ -126,6 +144,52 @@ export default function ReviewPage() {
       {result.similar_applications && result.similar_applications.length > 0 && (
         <SimilarAppsPanel apps={result.similar_applications} />
       )}
+
+      {/* Version history accordion */}
+      <div className="rounded-lg border bg-white">
+        <button
+          onClick={() => {
+            if (!historyOpen && versions.length === 0) fetchVersions();
+            setHistoryOpen((o) => !o);
+          }}
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-slate-700 hover:bg-slate-50 transition-colors"
+        >
+          <span>Version History</span>
+          <span className="text-slate-400">{historyOpen ? "▴" : "▾"}</span>
+        </button>
+        {historyOpen && (
+          <div className="border-t px-4 py-3">
+            {versionsLoading ? (
+              <div className="flex justify-center py-4">
+                <div className="h-5 w-5 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              </div>
+            ) : versions.length === 0 ? (
+              <p className="text-sm text-muted-foreground">No previous versions.</p>
+            ) : (
+              <ul className="space-y-2">
+                {versions.map((v, i) => (
+                  <li key={v.id} className="flex items-center justify-between text-sm">
+                    <span className="text-slate-600">
+                      Version {versions.length - i} &mdash;{" "}
+                      {new Date(v.created_at).toLocaleString()}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      {v.baseline_ats_score != null && (
+                        <span>{v.baseline_ats_score.toFixed(0)}% baseline → </span>
+                      )}
+                      {v.ats_score != null ? (
+                        <span className="text-emerald-700 font-medium">{v.ats_score.toFixed(0)}% ATS</span>
+                      ) : (
+                        <span>No ATS score</span>
+                      )}
+                    </span>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* Placeholder fill assistant */}
       <PlaceholderBanner diffJson={result.diff_json} onApply={setBulletDecision} />
@@ -196,6 +260,7 @@ export default function ReviewPage() {
           setManualEdit={setManualEdit}
           regeneratingBullet={regeneratingBullet}
           onRegenerateBullet={handleRegenerateBullet}
+          focusedBullet={focusedBullet}
         />
       )}
     </div>

@@ -4,9 +4,35 @@ from __future__ import annotations
 
 import uuid
 from datetime import date, datetime
-from typing import Literal
+from typing import Literal, TypedDict
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from backend.enums import SelectionMode
+
+
+# ── JSONB field TypedDicts (document the expected shape of JSONB DB columns) ──
+
+class JdParsed(TypedDict, total=False):
+    """Shape of Application.jd_parsed after the JD parsing pipeline."""
+    role_summary: str
+    domain: str
+    seniority_level: str
+    required_skills: list[str]
+    key_responsibilities: list[str]
+    tools_and_technologies: list[str]
+    nice_to_have_skills: list[str]
+    keywords: list[str]
+
+
+class PipelineSelection(TypedDict, total=False):
+    """Shape of Application.pipeline_selection — the experience IDs submitted to /tailor/run."""
+    experience_ids: list[str]
+    project_ids: list[str]
+    activity_ids: list[str]
+    education_ids: list[str]
+    skill_ids: list[str]
+    selection_mode: str
 
 # Shared config for all response schemas that are built from ORM objects
 _ORM_CONFIG = ConfigDict(from_attributes=True)
@@ -210,7 +236,7 @@ class ApplicationCreate(BaseModel):
 
 
 class ApplicationUpdate(BaseModel):
-    outcome: str | None = Field(None)
+    outcome: Literal["applied", "interview", "offer", "rejected", "withdrawn"] | None = Field(None)
     notes: str | None = Field(None, max_length=5000)
 
 
@@ -238,6 +264,15 @@ class PipelineStatusOut(BaseModel):
     cv_version_id: uuid.UUID | None  # Latest CvVersion id if one exists
 
 
+class CvVersionOut(BaseModel):
+    """One entry in the version history list."""
+    model_config = _ORM_CONFIG
+    id: uuid.UUID
+    created_at: datetime
+    ats_score: float | None
+    baseline_ats_score: float | None
+
+
 # ── Tailoring ──────────────────────────────────────────────────────────
 class TailorRunRequest(BaseModel):
     application_id: uuid.UUID
@@ -246,7 +281,7 @@ class TailorRunRequest(BaseModel):
     pinned_activities: list[uuid.UUID] | None = None
     pinned_education: list[uuid.UUID] | None = None
     pinned_skills: list[uuid.UUID] | None = None
-    selection_mode: str = "library"  # "library" | "latest_cv"
+    selection_mode: str = SelectionMode.LIBRARY
 
 
 class RegenerateBulletRequest(BaseModel):
@@ -271,27 +306,6 @@ class RegenerateBulletRequest(BaseModel):
         if v is None:
             return v
         return [item[:500] for item in v[:10]]
-
-
-class BulletDiff(BaseModel):
-    experience_id: uuid.UUID
-    original_bullets: list[str]
-    suggested_bullets: list[str]
-    changes_made: list[str]
-    confidence: float
-
-
-class AtsWarning(BaseModel):
-    field: str
-    issue: str
-    suggestion: str
-
-
-class TailorRunResponse(BaseModel):
-    cv_version_id: uuid.UUID
-    diffs: list[BulletDiff]
-    ats_warnings: list[AtsWarning]
-    ats_score: int
 
 
 class AcceptChangesRequest(BaseModel):

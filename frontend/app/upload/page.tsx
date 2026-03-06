@@ -6,6 +6,7 @@ import { CVDropzone } from "@/components/upload/CVDropzone";
 import { api } from "@/lib/api";
 import { parseSummarySchema, type ParseSummary, type ReviewItem, type UnclassifiedBlock } from "@/lib/schemas";
 import { useAppStore } from "@/store/appStore";
+import { OnboardingBanner } from "@/components/onboarding/OnboardingBanner";
 
 const CATEGORY_TO_API: Record<string, string> = {
   "Work Experience": "work_experience",
@@ -96,6 +97,7 @@ export default function UploadPage() {
 
   return (
     <div className="space-y-6">
+      <OnboardingBanner />
       <h1 className="text-2xl font-bold">Upload CV</h1>
 
       {/* Onboarding steps — shown before any upload */}

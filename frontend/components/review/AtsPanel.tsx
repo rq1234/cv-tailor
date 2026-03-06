@@ -10,30 +10,34 @@ interface AtsPanelProps {
   baselineScore?: number;
 }
 
+function getAtsClasses(score: number) {
+  if (score >= 80) {
+    return {
+      borderClass: "border-l-emerald-500",
+      scoreClass: "text-emerald-700",
+      label: "ATS Compatible",
+      labelClass: "text-emerald-600 bg-emerald-50 border border-emerald-200",
+    };
+  }
+  if (score >= 60) {
+    return {
+      borderClass: "border-l-amber-400",
+      scoreClass: "text-amber-700",
+      label: "Needs Review",
+      labelClass: "text-amber-600 bg-amber-50 border border-amber-200",
+    };
+  }
+  return {
+    borderClass: "border-l-red-400",
+    scoreClass: "text-red-600",
+    label: "ATS Issues",
+    labelClass: "text-red-600 bg-red-50 border border-red-200",
+  };
+}
+
 export default function AtsPanel({ score, warnings, baselineScore }: AtsPanelProps) {
   const [open, setOpen] = useState(false);
-
-  const isGood = score >= 80;
-  const isOk = score >= 60;
-
-  const borderClass = isGood
-    ? "border-l-emerald-500"
-    : isOk
-    ? "border-l-amber-400"
-    : "border-l-red-400";
-
-  const scoreClass = isGood
-    ? "text-emerald-700"
-    : isOk
-    ? "text-amber-700"
-    : "text-red-600";
-
-  const label = isGood ? "ATS Compatible" : isOk ? "Needs Review" : "ATS Issues";
-  const labelClass = isGood
-    ? "text-emerald-600 bg-emerald-50 border border-emerald-200"
-    : isOk
-    ? "text-amber-600 bg-amber-50 border border-amber-200"
-    : "text-red-600 bg-red-50 border border-red-200";
+  const { borderClass, scoreClass, label, labelClass } = getAtsClasses(score);
 
   const delta = baselineScore != null ? score - baselineScore : null;
   const improved = delta != null && delta > 0;

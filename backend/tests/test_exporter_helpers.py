@@ -6,6 +6,9 @@ async setup is required.
 
 from __future__ import annotations
 
+import random
+import re
+import string
 from datetime import date
 
 import pytest
@@ -390,3 +393,75 @@ class TestSoftTrimBullet:
         if len(text) <= 110:
             result = _soft_trim_bullet(text)
             assert "  " not in result
+
+
+# ── _escape_latex fuzz ─────────────────────────────────────────────────────────
+
+_LATEX_BARE_SPECIALS = re.compile(r"(?<!\\)[&$#%_]")
+_PRINTABLE = string.ascii_letters + string.digits + string.punctuation + " "
+
+
+class TestEscapeLatexFuzz:
+    """Property-based fuzz tests for _escape_latex and _escape_latex_url."""
+
+    def test_no_unescaped_specials_in_random_strings(self):
+        """After escaping, bare LaTeX special characters must not appear."""
+        rng = random.Random(42)
+        for _ in range(500):
+            s = "".join(rng.choices(_PRINTABLE, k=rng.randint(0, 80)))
+            out = _escape_latex(s)
+            # No bare &, $, #, %, _ (each must be preceded by backslash)
+            assert not _LATEX_BARE_SPECIALS.search(out), (
+                f"Bare special char found in escaped output.\n"
+                f"Input:  {s!r}\n"
+                f"Output: {out!r}"
+            )
+
+    def test_plain_text_survives_unchanged(self):
+        """Plain letters, digits and safe punctuation pass through verbatim."""
+        safe = string.ascii_letters + string.digits + " .,;:!?()[]'\"-/"
+        assert _escape_latex(safe) == safe
+
+    def test_all_specials_escaped(self):
+        """Each LaTeX special character is individually escaped correctly."""
+        cases = {
+            "&": r"\&",
+            "$": r"\$",
+            "#": r"\#",
+            "%": r"\%",
+            "_": r"\_",
+            "{": r"\{",
+            "}": r"\}",
+            "~": r"\textasciitilde{}",
+            "^": r"\^{}",
+            # Backslash becomes \textbackslash{}, then { and } are escaped
+            "\\": r"\textbackslash\{\}",
+        }
+        for char, expected in cases.items():
+            result = _escape_latex(char)
+            assert result == expected, f"_escape_latex({char!r}) → {result!r}, want {expected!r}"
+
+    def test_url_percent_escaped_in_href(self):
+        """_escape_latex_url escapes % (required inside \\href{} brace groups)."""
+        url = "https://example.com/path%20encoded"
+        out = _escape_latex_url(url)
+        assert r"\%" in out, f"% was not escaped in URL: {out!r}"
+
+    def test_url_ampersand_safe_in_href(self):
+        """& is safe inside \\href{} and must NOT be escaped by _escape_latex_url."""
+        url = "https://example.com/?a=1&b=2"
+        out = _escape_latex_url(url)
+        # & must be preserved (not escaped to \&) so the URL remains valid
+        assert "&" in out, f"& was unexpectedly escaped: {out!r}"
+        assert r"\&" not in out, f"& should not be escaped in URLs: {out!r}"
+
+    def test_fuzz_no_double_backslash_sequences(self):
+        """Escaped output should not contain \\\\X (double-escaped backslash)."""
+        rng = random.Random(99)
+        for _ in range(200):
+            s = "".join(rng.choices(string.printable, k=rng.randint(0, 60)))
+            out = _escape_latex(s)
+            # Double-escaping would create \\textbackslash{} — check it's clean
+            assert "\\\\textbackslash" not in out, (
+                f"Double-escape detected.\nInput: {s!r}\nOutput: {out!r}"
+            )

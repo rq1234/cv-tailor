@@ -12,9 +12,9 @@ from backend.utils import retry_openai
 # ---------------------------------------------------------------------------
 # In-process LRU cache — survives for the lifetime of the process.
 # Embeddings are fully deterministic (same text → same vector), so there is
-# no correctness risk in caching indefinitely. 2 000 entries ≈ 3–4 MB RAM.
+# no correctness risk in caching indefinitely.
 # ---------------------------------------------------------------------------
-_CACHE_MAX = 2_000
+_CACHE_MAX = get_settings().embedding_cache_size
 _cache: OrderedDict[str, list[float]] = OrderedDict()
 
 

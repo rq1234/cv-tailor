@@ -18,6 +18,7 @@ from backend.agents.draft_selector import SelectionResult, select_experiences
 from backend.agents.gap_analyzer import GapAnalysis, analyze_gaps
 from backend.agents.jd_parser import ParsedJD, parse_jd
 from backend.api.db_helpers import fetch_active_rules_text
+from backend.enums import ApplicationStatus, SelectionMode
 from backend.models.tables import (
     Activity,
     Application,
@@ -48,7 +49,7 @@ class PipelineState(BaseModel):
     current_step: str = "pending"
     error: str | None = None
     max_pages: int = 1
-    selection_mode: str = "library"  # "library" | "latest_cv"
+    selection_mode: str = SelectionMode.LIBRARY
 
 
 def _orm_to_dict(obj, fields: list[str]) -> dict:
@@ -86,7 +87,7 @@ async def parse_jd_node(state: PipelineState, db: AsyncSession) -> PipelineState
             state.error = "Application not found"
             return state
         app.jd_parsed = state.jd_parsed
-        app.status = "tailoring"
+        app.status = ApplicationStatus.TAILORING
         await db.commit()
     except Exception as e:
         logger.exception("JD parsing failed for application %s", state.application_id)
@@ -132,6 +133,25 @@ async def baseline_ats_node(state: PipelineState, db: AsyncSession) -> PipelineS
     try:
         user_uuid = uuid.UUID(state.user_id)
 
+        # Reuse baseline ATS from any prior version of this application — the original
+        # CV doesn't change between re-tailoring runs, so we never need to re-check it.
+        prev_result = await db.execute(
+            select(CvVersion)
+            .where(
+                CvVersion.application_id == uuid.UUID(state.application_id),
+                CvVersion.baseline_ats_score.is_not(None),
+            )
+            .order_by(CvVersion.created_at.desc())
+            .limit(1)
+        )
+        prev_version = prev_result.scalar_one_or_none()
+        if prev_version is not None:
+            state.baseline_ats_result = {
+                "ats_score": prev_version.baseline_ats_score,
+                "warnings": prev_version.baseline_ats_warnings or [],
+            }
+            return state
+
         profile_result = await db.execute(
             select(CvProfile)
             .where(CvProfile.user_id == user_uuid)
@@ -146,7 +166,9 @@ async def baseline_ats_node(state: PipelineState, db: AsyncSession) -> PipelineS
                 Application.user_id == user_uuid,
             )
         )
-        app = app_result.scalar_one()
+        app = app_result.scalar_one_or_none()
+        if not app:
+            raise ValueError(f"Application {state.application_id} not found for user {state.user_id}")
 
         # Fetch raw experiences with original bullets
         selected_exp_ids = [exp["id"] for exp in state.selection.get("selected_experiences", [])]
@@ -503,7 +525,7 @@ async def save_results_node(state: PipelineState, db: AsyncSession) -> PipelineS
         if not app:
             state.error = "Application not found while saving results"
             return state
-        app.status = "review"
+        app.status = ApplicationStatus.REVIEW
         await db.commit()
 
         state.current_step = "complete"
@@ -520,7 +542,7 @@ async def run_pipeline(
     user_id: uuid.UUID,
     on_step: Any | None = None,
     manual_selection: dict | None = None,
-    selection_mode: str = "library",
+    selection_mode: str = SelectionMode.LIBRARY,
     skip_completed: bool = False,
 ) -> PipelineState:
     """Run the full tailoring pipeline.
