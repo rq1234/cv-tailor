@@ -459,11 +459,13 @@ def _score_keyword_fit(keyword: str, bullet: str) -> int:
 def _assign_keywords_to_bullets(
     bullets: list[str],
     priority_keywords: list[str],
+    max_bullets_per_kw: int = 2,
 ) -> dict[int, list[str]]:
-    """Exclusively assign each keyword to the single bullet where it fits best.
+    """Assign each missing keyword to the top-N best-fitting bullets.
 
-    Each keyword goes to exactly one bullet — prevents the same keyword being
-    suggested for every bullet (keyword stuffing).
+    A keyword can appear in up to `max_bullets_per_kw` bullets (those with the
+    highest word-overlap fit), preventing both keyword stuffing (broadcasting
+    to every bullet) and over-restriction (only 1 bullet allowed).
     """
     assignment: dict[int, list[str]] = {i: [] for i in range(len(bullets))}
     for kw in priority_keywords:
@@ -471,10 +473,11 @@ def _assign_keywords_to_bullets(
         # Skip if already present in any bullet (no need to inject)
         if any(kw_lower in b.lower() for b in bullets):
             continue
-        # Find the bullet with the best word-overlap fit
+        # Rank bullets by word-overlap fit; assign to top N
         scores = [_score_keyword_fit(kw, b) for b in bullets]
-        best_idx = max(range(len(scores)), key=lambda i: scores[i])
-        assignment[best_idx].append(kw)
+        ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        for idx in ranked[:max_bullets_per_kw]:
+            assignment[idx].append(kw)
     return assignment
 
 
@@ -486,8 +489,9 @@ def _build_bullet_briefs(
     """For each bullet, build a short tailoring brief: which JD themes to surface.
 
     Uses gap analysis mappings (evidence + suggested_framing) when available,
-    otherwise assigns each missing JD keyword exclusively to the bullet where
-    it fits best — avoiding keyword repetition across sibling bullets.
+    otherwise assigns each missing JD keyword to the top-2 best-fitting bullets
+    so relevant keywords can appear across multiple bullets while avoiding
+    broadcasting the same keyword to every bullet (keyword stuffing).
     """
     # Priority-ordered keywords: required skills first, then general keywords
     priority_keywords = (
