@@ -100,7 +100,6 @@ export default function LibraryPage() {
       <div className="flex flex-col items-center justify-center py-20 gap-3">
         <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
         <p className="text-sm text-muted-foreground">Loading experience pool...</p>
-        <p className="text-xs text-muted-foreground">If this is your first visit in a while, the server may be waking up (up to 30s)</p>
       </div>
     );
   }

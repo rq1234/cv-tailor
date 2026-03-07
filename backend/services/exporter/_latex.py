@@ -21,6 +21,8 @@ from ._text import (
 # ── LaTeX preamble (Jake Gutierrez template) ─────────────────────────────────
 _PREAMBLE = r"""\documentclass[letterpaper,11pt]{article}
 
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
 \usepackage{latexsym}
 \usepackage[empty]{fullpage}
 \usepackage{titlesec}

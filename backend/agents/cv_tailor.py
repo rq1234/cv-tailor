@@ -3,7 +3,29 @@
 from __future__ import annotations
 
 import asyncio
+import re
 from difflib import SequenceMatcher
+
+_NUMBER_RE = re.compile(
+    r"\b\d[\d,]*(?:\.\d+)?(?:\+|[kKMB]|%|x)?\b"  # 10,000+ / 25% / 8x / $800K
+    r"|\btop\s+\d+\b"                               # top 5
+    r"|\b\d+\s+of\s+\d+\b",                         # 1 of 80
+    re.IGNORECASE,
+)
+
+_BANNED_PHRASE_RE = re.compile(
+    r"\b(?:showcasing|demonstrating|highlighting|leveraging expertise in)\s+\w",
+    re.IGNORECASE,
+)
+
+
+def _extract_numbers(text: str) -> set[str]:
+    return set(_NUMBER_RE.findall(text))
+
+
+def _has_hallucinated_numbers(original: str, suggested: str) -> bool:
+    """True if suggested introduces numbers not present in original."""
+    return bool(_extract_numbers(suggested) - _extract_numbers(original))
 
 from pydantic import BaseModel, Field
 
@@ -424,6 +446,38 @@ GOOD: Return VERBATIM — "1 of 80 students" and "Trading Invitational" already 
 """
 
 
+def _score_keyword_fit(keyword: str, bullet: str) -> int:
+    """Score how naturally a keyword fits a bullet (higher = better fit).
+
+    Uses word-level overlap so multi-word keywords score proportionally.
+    """
+    kw_words = set(keyword.lower().split())
+    bullet_words = set(bullet.lower().split())
+    return len(kw_words & bullet_words)
+
+
+def _assign_keywords_to_bullets(
+    bullets: list[str],
+    priority_keywords: list[str],
+) -> dict[int, list[str]]:
+    """Exclusively assign each keyword to the single bullet where it fits best.
+
+    Each keyword goes to exactly one bullet — prevents the same keyword being
+    suggested for every bullet (keyword stuffing).
+    """
+    assignment: dict[int, list[str]] = {i: [] for i in range(len(bullets))}
+    for kw in priority_keywords:
+        kw_lower = kw.lower()
+        # Skip if already present in any bullet (no need to inject)
+        if any(kw_lower in b.lower() for b in bullets):
+            continue
+        # Find the bullet with the best word-overlap fit
+        scores = [_score_keyword_fit(kw, b) for b in bullets]
+        best_idx = max(range(len(scores)), key=lambda i: scores[i])
+        assignment[best_idx].append(kw)
+    return assignment
+
+
 def _build_bullet_briefs(
     bullets: list[str],
     gap_analysis: dict | None,
@@ -432,17 +486,13 @@ def _build_bullet_briefs(
     """For each bullet, build a short tailoring brief: which JD themes to surface.
 
     Uses gap analysis mappings (evidence + suggested_framing) when available,
-    otherwise falls back to simple keyword overlap from jd_parsed.
+    otherwise assigns each missing JD keyword exclusively to the bullet where
+    it fits best — avoiding keyword repetition across sibling bullets.
     """
-    # Collect JD keywords and requirements for fallback matching
-    jd_keywords = set()
-    for kw in jd_parsed.get("keywords", []):
-        jd_keywords.add(kw.lower())
-    for skill in jd_parsed.get("required_skills", []):
-        jd_keywords.add(skill.lower())
-    for resp in jd_parsed.get("key_responsibilities", []):
-        jd_keywords.add(resp.lower())
-    outcome_signals = jd_parsed.get("outcome_signals", [])
+    # Priority-ordered keywords: required skills first, then general keywords
+    priority_keywords = (
+        jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
+    )
 
     # Build a mapping from bullet text → relevant gap analysis entries
     bullet_to_framings: dict[str, list[str]] = {}
@@ -454,7 +504,6 @@ def _build_bullet_briefs(
             status = mapping.get("status", "")
             if status in ("strong_match", "partial_match") and evidence:
                 for bullet in bullets:
-                    # Check if this mapping's evidence references this bullet
                     if _similarity(evidence, bullet.lower()) > 0.4 or any(
                         word in evidence for word in bullet.lower().split()[:5]
                     ):
@@ -466,31 +515,49 @@ def _build_bullet_briefs(
                         else:
                             bullet_to_framings[bullet].append(requirement)
 
+    # Pre-assign missing keywords exclusively to best-fit bullets
+    keyword_assignment = _assign_keywords_to_bullets(bullets, priority_keywords[:12])
+
+    # Build sibling context: which keywords are already covered across all bullets
+    covered_keywords = [
+        kw for kw in priority_keywords if any(kw.lower() in b.lower() for b in bullets)
+    ][:4]
+
     briefs = []
-    for bullet in bullets:
-        # Use gap analysis framings if available
+    for idx, bullet in enumerate(bullets):
+        # Use gap analysis framings if available (highest quality)
         if bullet in bullet_to_framings:
             themes = bullet_to_framings[bullet]
             briefs.append(
                 f"  → Tailoring brief: Reframe to surface these JD themes: {'; '.join(themes)}"
             )
         else:
-            # Fallback: find keyword overlaps
+            # Fallback: use exclusively-assigned keywords for this bullet
             bullet_lower = bullet.lower()
-            matching_keywords = [
-                kw for kw in jd_keywords if kw in bullet_lower
-            ]
-            matching_outcomes = [
-                sig for sig in outcome_signals if sig.lower() in bullet_lower
-            ]
-            if matching_keywords or matching_outcomes:
-                all_themes = matching_keywords + matching_outcomes
+            assigned_missing = keyword_assignment.get(idx, [])
+            present_keywords = [
+                kw for kw in priority_keywords if kw.lower() in bullet_lower
+            ][:2]
+            sibling_note = (
+                f" (Other bullets in this experience already cover: {', '.join(covered_keywords)} — do not repeat.)"
+                if covered_keywords else ""
+            )
+            if assigned_missing:
+                present_note = (
+                    f" Already in this bullet: {', '.join(present_keywords)}." if present_keywords else ""
+                )
                 briefs.append(
-                    f"  → Tailoring brief: This bullet touches JD themes: {', '.join(all_themes[:4])}. Lead with the most relevant one."
+                    f"  → Tailoring brief: This bullet is the best place to inject: {', '.join(assigned_missing)}."
+                    f"{present_note}{sibling_note}"
+                )
+            elif present_keywords:
+                briefs.append(
+                    f"  → Tailoring brief: Bullet already covers: {', '.join(present_keywords[:3])}. "
+                    f"Reframe to lead with the most JD-critical one.{sibling_note} Return verbatim if already optimal."
                 )
             else:
                 briefs.append(
-                    "  → Tailoring brief: No exact JD keyword found. Check whether any of the Key Responsibilities above describe the same type of work. If so, reframe the bullet to lead with that responsibility theme. If genuinely unrelated, return verbatim."
+                    f"  → Tailoring brief: No direct JD keyword match. Check Key Responsibilities above for the same type of work and reframe to lead with that theme.{sibling_note} Return verbatim if genuinely unrelated."
                 )
     return briefs
 
@@ -607,6 +674,18 @@ Return all experiences."""
             # If the only difference is casing, spelling, or trailing punctuation,
             # revert to the original
             if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
+                te.suggested_bullets[i] = TailoredBullet(
+                    text=orig,
+                    has_placeholder=False,
+                    outcome_type=suggested.outcome_type,
+                )
+            elif _has_hallucinated_numbers(orig, suggested.text):
+                te.suggested_bullets[i] = TailoredBullet(
+                    text=orig,
+                    has_placeholder=False,
+                    outcome_type=suggested.outcome_type,
+                )
+            elif _BANNED_PHRASE_RE.search(suggested.text):
                 te.suggested_bullets[i] = TailoredBullet(
                     text=orig,
                     has_placeholder=False,
@@ -791,9 +870,15 @@ Return all projects."""
             sugg_norm = suggested.text.lower().strip().rstrip(".")
             if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
                 tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_hallucinated_numbers(orig, suggested.text):
+                tp.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _BANNED_PHRASE_RE.search(suggested.text):
+                tp.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
                 )
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
@@ -904,9 +989,15 @@ Return all activities."""
             sugg_norm = suggested.text.lower().strip().rstrip(".")
             if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
                 ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_hallucinated_numbers(orig, suggested.text):
+                ta.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _BANNED_PHRASE_RE.search(suggested.text):
+                ta.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
                 )
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets

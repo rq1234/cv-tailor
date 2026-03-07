@@ -43,12 +43,36 @@ def _escape_latex_url(url: str) -> str:
     return url
 
 
+# Unicode typography → ASCII equivalents (applied before LaTeX escaping so the
+# replacements don't introduce characters that need further escaping).
+_UNICODE_TYPOGRAPHY = str.maketrans({
+    "\u2014": "---",  # em dash
+    "\u2015": "---",  # horizontal bar
+    "\u2013": "--",   # en dash
+    "\u201c": '"',    # left double quote
+    "\u201d": '"',    # right double quote
+    "\u2018": "'",    # left single quote
+    "\u2019": "'",    # right single quote / apostrophe
+    "\u2026": "...",  # ellipsis
+    "\u2022": "-",    # bullet
+    "\u00a0": " ",    # non-breaking space
+    "\u00b7": ".",    # middle dot
+    "\u2010": "-",    # hyphen
+    "\u2011": "-",    # non-breaking hyphen
+    "\u2012": "-",    # figure dash
+    "\u2212": "-",    # minus sign
+    "\u00d7": "x",    # multiplication sign
+})
+
+
 def _escape_latex(text: str) -> str:
     """Escape special LaTeX characters."""
     if not text:
         return ""
     text = str(text)
     text = "".join(ch for ch in text if ch >= " " or ch == "\t")
+    # Normalise unicode typography to ASCII before LaTeX-escaping
+    text = text.translate(_UNICODE_TYPOGRAPHY)
     text = text.replace("\\", r"\textbackslash{}")
     for char, replacement in [
         ("&", r"\&"),

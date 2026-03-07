@@ -24,7 +24,6 @@ export class ApiError extends Error {
   }
 }
 
-/** Timeout per attempt — long enough to survive a Render cold start (~60s). */
 const REQUEST_TIMEOUT_MS = 90_000;
 
 /** How long to wait between retry attempts (ms). */
@@ -59,13 +58,12 @@ async function request<T>(
     if (err instanceof DOMException && err.name === "AbortError") {
       throw new Error("Server took too long to respond — please try again");
     }
-    // Network error (e.g. connection refused during cold start) — retry
     const delay = RETRY_DELAYS_MS[_attemptIndex];
     if (delay !== undefined) {
       await new Promise((resolve) => setTimeout(resolve, delay));
       return request<T>(path, options, _attemptIndex + 1);
     }
-    throw new Error("Server is starting up — please wait a moment and try again");
+    throw new Error("Could not connect to server — please try again");
   } finally {
     clearTimeout(timeoutId);
   }
@@ -101,7 +99,7 @@ async function _uploadFile<T>(
       await new Promise((resolve) => setTimeout(resolve, delay));
       return _uploadFile<T>(path, file, _attemptIndex + 1);
     }
-    throw new Error("Server is starting up — please wait a moment and try again");
+    throw new Error("Could not connect to server — please try again");
   }
 
   if (!res.ok) {
