@@ -519,33 +519,36 @@ def _build_bullet_briefs(
                         else:
                             bullet_to_framings[bullet].append(requirement)
 
-    # Pre-assign missing keywords exclusively to best-fit bullets
+    # Pre-assign missing keywords to best-fit bullets
     keyword_assignment = _assign_keywords_to_bullets(bullets, priority_keywords[:12])
-
-    # Build sibling context: which keywords are already covered across all bullets
-    covered_keywords = [
-        kw for kw in priority_keywords if any(kw.lower() in b.lower() for b in bullets)
-    ][:4]
 
     briefs = []
     for idx, bullet in enumerate(bullets):
+        bullet_lower = bullet.lower()
+
+        # Keywords covered by SIBLING bullets only (not this bullet) — tell the
+        # model these themes are already handled elsewhere so it doesn't repeat them.
+        sibling_covered = [
+            kw for kw in priority_keywords
+            if kw.lower() not in bullet_lower
+            and any(kw.lower() in b.lower() for j, b in enumerate(bullets) if j != idx)
+        ][:4]
+        sibling_note = (
+            f" (Sibling bullets cover: {', '.join(sibling_covered)} — no need to repeat.)"
+            if sibling_covered else ""
+        )
+
         # Use gap analysis framings if available (highest quality)
         if bullet in bullet_to_framings:
             themes = bullet_to_framings[bullet]
             briefs.append(
-                f"  → Tailoring brief: Reframe to surface these JD themes: {'; '.join(themes)}"
+                f"  → Tailoring brief: Reframe to surface these JD themes: {'; '.join(themes)}.{sibling_note}"
             )
         else:
-            # Fallback: use exclusively-assigned keywords for this bullet
-            bullet_lower = bullet.lower()
             assigned_missing = keyword_assignment.get(idx, [])
             present_keywords = [
                 kw for kw in priority_keywords if kw.lower() in bullet_lower
             ][:2]
-            sibling_note = (
-                f" (Other bullets in this experience already cover: {', '.join(covered_keywords)} — do not repeat.)"
-                if covered_keywords else ""
-            )
             if assigned_missing:
                 present_note = (
                     f" Already in this bullet: {', '.join(present_keywords)}." if present_keywords else ""

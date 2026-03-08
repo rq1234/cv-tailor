@@ -11,19 +11,24 @@ RUN curl -fsSL \
     'https://github.com/tectonic-typesetting/tectonic/releases/download/tectonic%400.15.0/tectonic-0.15.0-x86_64-unknown-linux-musl.tar.gz' \
     | tar xz -C /usr/local/bin
 
-# Pre-warm Tectonic: compile a doc that uses common resume packages so they
-# get downloaded and cached inside the image. This means the first real PDF
-# compile on EC2 is ~3-5s instead of ~30s.
+# Pre-warm Tectonic: compile a doc using the exact packages from the resume
+# template so they are downloaded and cached inside the image. This ensures
+# the first real PDF compile is ~3-5s instead of ~30s+.
 RUN printf '%s\n' \
     '\documentclass[letterpaper,11pt]{article}' \
-    '\usepackage{geometry}' \
-    '\usepackage{enumitem}' \
-    '\usepackage{hyperref}' \
-    '\usepackage{fontawesome5}' \
-    '\usepackage{multicol}' \
-    '\usepackage{tabularx}' \
+    '\usepackage[T1]{fontenc}' \
+    '\usepackage[utf8]{inputenc}' \
+    '\usepackage{latexsym}' \
+    '\usepackage[empty]{fullpage}' \
     '\usepackage{titlesec}' \
-    '\usepackage{xcolor}' \
+    '\usepackage{marvosym}' \
+    '\usepackage[usenames,dvipsnames]{color}' \
+    '\usepackage{verbatim}' \
+    '\usepackage{enumitem}' \
+    '\usepackage[hidelinks]{hyperref}' \
+    '\usepackage{fancyhdr}' \
+    '\usepackage[english]{babel}' \
+    '\usepackage{tabularx}' \
     '\begin{document}warmup\end{document}' \
     > /tmp/warmup.tex \
     && tectonic /tmp/warmup.tex --outdir /tmp \
