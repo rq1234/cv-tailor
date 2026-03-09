@@ -391,10 +391,12 @@ The rule is simple: if you can delete the ending clause and the bullet still mak
 
 ## What "Tailoring" Actually Means
 Tailoring is NOT paraphrasing or shortening. Tailoring means:
-1. REFRAME the bullet to lead with the theme the JD cares about (e.g. if JD says "data pipelines", lead with the pipeline aspect, not the deployment aspect).
+1. REFRAME the bullet to lead with the theme the JD cares about (e.g. if JD says "data pipelines", lead with the pipeline aspect, not the deployment aspect). Move the most JD-critical element to the FRONT of the sentence.
 2. ADD JD-relevant framing language (e.g. add "for real-time analytics" if the JD emphasizes real-time systems), but ONLY if truthful.
 3. KEEP all existing technical details — they are the substance of the bullet.
-4. Return VERBATIM only if the bullet ALREADY leads with the most JD-critical theme AND already uses the key JD vocabulary naturally. If the content is relevant but the JD theme is buried mid-sentence or absent, reframe the opening even if the rest stays the same. A cosmetic synonym swap ("Built"→"Developed") is NOT tailoring — only reframe when it meaningfully shifts emphasis toward a JD priority.
+4. Every bullet MUST be actively improved. Assume every bullet can be made more JD-relevant. If it already uses the right vocabulary, restructure it to LEAD more strongly with the JD priority. A bullet that is unchanged is a missed opportunity — treat it as a failure unless the tailoring brief explicitly says the bullet is already optimal.
+
+The ONLY reason to leave a bullet unchanged is if the tailoring brief says there is no JD keyword match AND no related theme to surface. In all other cases, produce a different bullet.
 
 ## Length Guideline
 - TARGET: 120-170 characters per bullet. This keeps bullets detailed and substantive.
@@ -422,17 +424,19 @@ Original: "Analyzed sales data and created weekly Tableau dashboards for the mar
 BAD (paraphrasing): "Developed Tableau dashboards by analyzing sales data for marketing" ← reworded but no JD theme surfaced
 GOOD (tailoring): "Partnered with cross-functional stakeholders to design Tableau dashboards from sales data, driving data-informed marketing decisions" ← leads with "cross-functional stakeholders" (JD theme), adds "data-informed decisions" (JD outcome signal)
 
-### Example 3 — Bullet already matches JD well
+### Example 3 — Bullet already uses JD vocabulary but can lead stronger
 Original: "Designed and deployed ML pipeline using XGBoost and SHAP, reducing churn by 15%"
-GOOD: Return VERBATIM — this bullet already has strong action verb, named tech, and quantified outcome. Do not touch it.
+JD emphasises: "predictive modelling" and "customer retention"
+BAD (verbatim cop-out): return unchanged ← lazy
+GOOD: "Built predictive ML pipeline (XGBoost, SHAP) to model customer churn, driving 15% retention improvement" ← reframes around "predictive modelling" and "customer retention", preserves all tech and metrics
 
 ### Example 4 — JD emphasizes "Python" and "quantitative analysis" (ANTI-PATTERN)
 Original: "Selected as 1 of 80 students across EMEA for Citadel's European Trading Invitational"
 BAD (appended filler): "Selected as 1 of 80 students for Citadel's European Trading Invitational, demonstrating quantitative analysis skills" ← "demonstrating X skills" is empty filler a recruiter will ignore
-GOOD: Return VERBATIM — "1 of 80 students" and "Trading Invitational" already imply quantitative ability. Adding "demonstrating quantitative analysis skills" adds zero information and sounds AI-generated.
+GOOD (no JD theme possible): Return unchanged ONLY when the brief says no JD theme can be truthfully added. "1 of 80" is already a strong signal; forced additions read as AI-generated.
 
 ## Output Rules
-- CRITICAL: Do NOT make cosmetic changes like spelling normalization (e.g. "visualise"→"visualize"), minor word reordering, or synonym swaps that don't add JD keywords. A change must either: (a) reframe the opening to lead with a JD Key Responsibility theme, (b) add a JD-relevant outcome signal or framing context, or (c) meaningfully surface a hidden keyword. If none of (a)/(b)/(c) apply, copy the bullet verbatim.
+- CRITICAL: A change must either: (a) reframe the opening to lead with a JD Key Responsibility theme, (b) add a JD-relevant outcome signal or framing context, or (c) meaningfully surface a hidden keyword. Synonym swaps alone ("Built"→"Developed", "using"→"utilizing") are NOT improvements. A rewrite that is 95%+ similar to the original will be rejected — it must read noticeably differently.
 - CRITICAL: Return EXACTLY the same number of suggested_bullets as original_bullets — one per original bullet. Never split a bullet into two. Never merge two into one.
 - For each change, document what you changed and why in changes_made. If you shortened a bullet, explain what you removed and why it was safe to remove.
 - In requirements_addressed, list which JD requirements this experience's bullets now cover.
@@ -638,20 +642,20 @@ def _build_bullet_briefs(
             ][:2]
             if assigned_missing:
                 present_note = (
-                    f" Already in this bullet: {', '.join(present_keywords)}." if present_keywords else ""
+                    f" (Already present: {', '.join(present_keywords)} — keep them.)" if present_keywords else ""
                 )
                 briefs.append(
-                    f"  → Tailoring brief: This bullet is the best place to inject: {', '.join(assigned_missing)}."
-                    f"{present_note}{sibling_note}"
+                    f"  → Tailoring brief: RESTRUCTURE this bullet to lead with: {', '.join(assigned_missing)}."
+                    f" Move this theme to the opening clause. Add it as context or outcome if it fits the work.{present_note}{sibling_note}"
                 )
             elif present_keywords:
                 briefs.append(
-                    f"  → Tailoring brief: Bullet already covers: {', '.join(present_keywords[:3])}. "
-                    f"Reframe to lead with the most JD-critical one.{sibling_note} Return verbatim if already optimal."
+                    f"  → Tailoring brief: Bullet covers {', '.join(present_keywords[:3])} but may bury it. "
+                    f"REFRAME the opening so '{present_keywords[0]}' is the first concept the reader sees.{sibling_note}"
                 )
             else:
                 briefs.append(
-                    f"  → Tailoring brief: No direct JD keyword match. Check Key Responsibilities above for the same type of work and reframe to lead with that theme.{sibling_note} Return verbatim if genuinely unrelated."
+                    f"  → Tailoring brief: No direct JD keyword match. Identify the closest Key Responsibility theme above and reframe the opening to surface it.{sibling_note} Only leave unchanged if genuinely unrelated to every JD theme."
                 )
     return briefs
 
@@ -727,11 +731,11 @@ Experiences to tailor:
 
     user_message += """
 For each bullet, follow this process:
-1. Read the tailoring brief above the bullet — it tells you which JD themes to surface.
-2. Decide the lead theme: which JD priority should this bullet open with?
-3. Reframe the bullet to lead with that theme, keeping ALL existing tech details and metrics.
-4. If the bullet already leads with the right theme and matches the JD well, return it VERBATIM — do NOT make cosmetic synonym swaps.
-5. A good tailoring change reframes emphasis and adds JD-relevant context. A bad change just swaps synonyms.
+1. Read the tailoring brief — it tells you exactly which JD theme to surface.
+2. Identify the MOST JD-critical element in the bullet (a skill, outcome, or context the JD values).
+3. Move that element to the FRONT. Restructure the sentence so the JD priority is the first thing read.
+4. Add JD-specific framing context if truthful (e.g. "for real-time analytics", "supporting cross-functional stakeholders"). This adds meaning — it is NOT the same as "demonstrating X skills".
+5. Do NOT just swap a synonym ("Built"→"Developed"). That is not improvement. If you cannot find a genuine structural change, produce the best reframe you can rather than returning unchanged.
 
 Return all experiences."""
 
