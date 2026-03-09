@@ -446,14 +446,104 @@ GOOD: Return VERBATIM — "1 of 80 students" and "Trading Invitational" already 
 """
 
 
+# Bidirectional abbreviation ↔ expansion table.  Used to normalise keywords
+# before checking presence in bullets, so "ML" is recognised as covering
+# "machine learning" and vice-versa.
+_ABBREV_EXPANSIONS: dict[str, list[str]] = {
+    # short → long
+    "ml":       ["machine learning"],
+    "nlp":      ["natural language processing"],
+    "ai":       ["artificial intelligence"],
+    "dl":       ["deep learning"],
+    "llm":      ["large language model"],
+    "llms":     ["large language model", "large language models"],
+    "rag":      ["retrieval augmented generation", "retrieval-augmented generation"],
+    "k8s":      ["kubernetes"],
+    "cv":       ["computer vision"],
+    "ci/cd":    ["continuous integration", "continuous deployment"],
+    "cicd":     ["continuous integration", "continuous deployment"],
+    "oop":      ["object-oriented programming", "object oriented programming"],
+    "apis":     ["api"],
+    "etl":      ["extract transform load"],
+    "bi":       ["business intelligence"],
+    "saas":     ["software as a service"],
+    # long → short
+    "machine learning":                ["ml"],
+    "natural language processing":     ["nlp"],
+    "artificial intelligence":         ["ai"],
+    "deep learning":                   ["dl"],
+    "large language model":            ["llm"],
+    "large language models":           ["llm", "llms"],
+    "kubernetes":                      ["k8s"],
+    "computer vision":                 ["cv"],
+    "continuous integration":          ["ci/cd", "cicd"],
+    "continuous deployment":           ["ci/cd", "cicd"],
+    "business intelligence":           ["bi"],
+    "software as a service":           ["saas"],
+}
+
+
+def _keyword_in_text(keyword: str, text: str) -> bool:
+    """Return True if keyword (or a known abbreviation/expansion) appears in text.
+
+    Handles:
+    - case insensitivity
+    - naive plurals (strips trailing 's')
+    - bidirectional abbreviation lookup (ML ↔ machine learning)
+    """
+    kw = keyword.lower().strip()
+    text_l = text.lower()
+
+    if kw in text_l:
+        return True
+    # Naive plural: "APIs" → check "api"
+    if kw.endswith("s") and kw[:-1] in text_l:
+        return True
+
+    for variant in _ABBREV_EXPANSIONS.get(kw, []):
+        if variant in text_l:
+            return True
+    return False
+
+
 def _score_keyword_fit(keyword: str, bullet: str) -> int:
     """Score how naturally a keyword fits a bullet (higher = better fit).
 
-    Uses word-level overlap so multi-word keywords score proportionally.
+    Expands abbreviations to canonical forms before computing word overlap so
+    that "ML models" and "machine learning models" score identically.
     """
-    kw_words = set(keyword.lower().split())
-    bullet_words = set(bullet.lower().split())
+    def _expand(text: str) -> str:
+        t = text.lower()
+        for abbrev, expansions in sorted(_ABBREV_EXPANSIONS.items(), key=lambda x: -len(x[0])):
+            if expansions and f" {abbrev} " in f" {t} ":
+                t = t.replace(abbrev, expansions[0])
+        return t
+
+    kw_words = set(_expand(keyword).split())
+    bullet_words = set(_expand(bullet).split())
     return len(kw_words & bullet_words)
+
+
+def _reorder_bullets_by_relevance(
+    tailored_list: list,
+    priority_keywords: list[str],
+) -> None:
+    """Sort bullet pairs within each entry by JD keyword match score (descending).
+
+    Keeps original_bullets and suggested_bullets in sync so pairs stay intact.
+    The most JD-relevant bullet moves to position 0, which is what ATS parsers
+    and recruiters read first.
+    """
+    for entry in tailored_list:
+        if len(entry.suggested_bullets) <= 1:
+            continue
+        scores = [
+            sum(1 for kw in priority_keywords if _keyword_in_text(kw, sug.text))
+            for sug in entry.suggested_bullets
+        ]
+        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
+        entry.original_bullets = [entry.original_bullets[i] for i in order]
+        entry.suggested_bullets = [entry.suggested_bullets[i] for i in order]
 
 
 def _assign_keywords_to_bullets(
@@ -469,9 +559,8 @@ def _assign_keywords_to_bullets(
     """
     assignment: dict[int, list[str]] = {i: [] for i in range(len(bullets))}
     for kw in priority_keywords:
-        kw_lower = kw.lower()
-        # Skip if already present in any bullet (no need to inject)
-        if any(kw_lower in b.lower() for b in bullets):
+        # Skip if already present (or equivalent abbreviation) in any bullet
+        if any(_keyword_in_text(kw, b) for b in bullets):
             continue
         # Rank bullets by word-overlap fit; assign to top N
         scores = [_score_keyword_fit(kw, b) for b in bullets]
@@ -524,14 +613,12 @@ def _build_bullet_briefs(
 
     briefs = []
     for idx, bullet in enumerate(bullets):
-        bullet_lower = bullet.lower()
-
         # Keywords covered by SIBLING bullets only (not this bullet) — tell the
         # model these themes are already handled elsewhere so it doesn't repeat them.
         sibling_covered = [
             kw for kw in priority_keywords
-            if kw.lower() not in bullet_lower
-            and any(kw.lower() in b.lower() for j, b in enumerate(bullets) if j != idx)
+            if not _keyword_in_text(kw, bullet)
+            and any(_keyword_in_text(kw, b) for j, b in enumerate(bullets) if j != idx)
         ][:4]
         sibling_note = (
             f" (Sibling bullets cover: {', '.join(sibling_covered)} — no need to repeat.)"
@@ -547,7 +634,7 @@ def _build_bullet_briefs(
         else:
             assigned_missing = keyword_assignment.get(idx, [])
             present_keywords = [
-                kw for kw in priority_keywords if kw.lower() in bullet_lower
+                kw for kw in priority_keywords if _keyword_in_text(kw, bullet)
             ][:2]
             if assigned_missing:
                 present_note = (
@@ -703,6 +790,10 @@ Return all experiences."""
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
 
     _clean_changes_made(tailored)
+
+    # Reorder bullets within each experience so the most JD-relevant comes first
+    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
+    _reorder_bullets_by_relevance(tailored, priority_keywords)
 
     return tailored
 
@@ -893,6 +984,9 @@ Return all projects."""
 
     _clean_changes_made(tailored)
 
+    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
+    _reorder_bullets_by_relevance(tailored, priority_keywords)
+
     return tailored
 
 
@@ -1011,6 +1105,9 @@ Return all activities."""
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
 
     _clean_changes_made(tailored)
+
+    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
+    _reorder_bullets_by_relevance(tailored, priority_keywords)
 
     return tailored
 
