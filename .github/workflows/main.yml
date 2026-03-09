@@ -28,3 +28,11 @@ jobs:
           docker build -t $REGISTRY/cv-tailor-backend:latest .
           docker push $REGISTRY/cv-tailor-backend:latest
 
+      - name: Deploy to ECS
+        run: |
+          aws ecs update-service \
+            --cluster ${{ secrets.ECS_CLUSTER }} \
+            --service ${{ secrets.ECS_SERVICE }} \
+            --force-new-deployment \
+            --query 'service.deployments[0].{status:status,desired:desiredCount,running:runningCount}' \
+            --output table
