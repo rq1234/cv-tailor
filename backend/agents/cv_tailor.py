@@ -449,6 +449,15 @@ GOOD (no JD theme possible): Return unchanged ONLY when the brief says no JD the
 {rules_section}
 """
 
+# Shared step-by-step instructions appended to every per-entry user message.
+_BULLET_PROCESS_STEPS = """
+For each bullet, follow this process:
+1. Read the tailoring brief — it tells you exactly which JD theme to surface.
+2. Identify the MOST JD-critical element in the bullet (a skill, outcome, or context the JD values).
+3. Move that element to the FRONT. Restructure the sentence so the JD priority is the first thing read.
+4. Add JD-specific framing context if truthful (e.g. "for real-time analytics", "supporting cross-functional stakeholders"). This adds meaning — it is NOT the same as "demonstrating X skills".
+5. Do NOT just swap a synonym ("Built"→"Developed"). That is not improvement. Produce the best structural reframe you can."""
+
 
 # Bidirectional abbreviation ↔ expansion table.  Used to normalise keywords
 # before checking presence in bullets, so "ML" is recognised as covering
@@ -660,6 +669,58 @@ def _build_bullet_briefs(
     return briefs
 
 
+async def _tailor_one_experience(
+    exp: dict,
+    system_prompt: str,
+    jd_summary: str,
+    gap_analysis: dict | None,
+    jd_parsed: dict,
+    client,
+    settings,
+) -> TailoredExperience:
+    """Fire a focused API call for a single experience's bullets."""
+    bullets = extract_bullet_texts(exp.get("bullets", []))
+    exp_id = str(exp["id"])
+
+    if not bullets:
+        return TailoredExperience(
+            experience_id=exp_id, original_bullets=[],
+            suggested_bullets=[], changes_made=[], confidence=0.5,
+        )
+
+    company = exp.get("company") or "Unknown"
+    role = exp.get("role_title") or "Unknown"
+    briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed)
+
+    user_message = (
+        f"Target Job Description:\n{jd_summary}\n\n"
+        f"Experience to tailor:\n"
+        f"--- {company} — {role} (ID: {exp_id}) ---\n"
+    )
+    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
+        user_message += f"  {i+1}. {bullet}\n{brief}\n"
+    user_message += _BULLET_PROCESS_STEPS + "\nReturn this experience."
+
+    response = await client.beta.chat.completions.parse(
+        model=settings.model_name,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        response_format=TailorOutput,
+        temperature=settings.temp_tailoring,
+    )
+    results = response.choices[0].message.parsed.tailored_experiences
+    if results:
+        return results[0]
+
+    return TailoredExperience(
+        experience_id=exp_id, original_bullets=bullets,
+        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
+        changes_made=[], confidence=0.5,
+    )
+
+
 async def tailor_experiences(
     experiences: list[dict],
     jd_parsed: dict,
@@ -668,13 +729,10 @@ async def tailor_experiences(
 ) -> list[TailoredExperience]:
     """Tailor selected experiences to match the JD using GPT-4o.
 
-    Args:
-        experiences: List of dicts with keys: id, company, role_title, bullets.
-        jd_parsed: Parsed JD dict.
-        gap_analysis: Optional gap analysis dict.
-        rules_text: Pre-formatted tailoring rules string.
+    Fires one focused API call per experience in parallel so the model
+    gives full attention to each role's bullets rather than spreading
+    attention across the entire CV at once.
     """
-
     # Build gap analysis context for the prompt
     gap_section = ""
     if gap_analysis:
@@ -704,54 +762,16 @@ async def tailor_experiences(
         rules_section=rules_text,
         gap_analysis_section=gap_section,
     )
-
-    # Build experience descriptions for GPT-4o
-    exp_descriptions = []
-    for exp in experiences:
-        bullets = extract_bullet_texts(exp.get("bullets", []))
-        exp_descriptions.append({
-            "experience_id": str(exp["id"]),
-            "company": exp.get("company") or "Unknown",
-            "role": exp.get("role_title") or "Unknown",
-            "bullets": bullets,
-        })
-
     jd_summary = _build_jd_summary(jd_parsed)
-
-    user_message = f"""Target Job Description:
-{jd_summary}
-
-Experiences to tailor:
-"""
-    for ed in exp_descriptions:
-        user_message += f"\n--- Experience: {ed['company']} - {ed['role']} (ID: {ed['experience_id']}) ---\n"
-        briefs = _build_bullet_briefs(ed["bullets"], gap_analysis, jd_parsed)
-        for i, (bullet, brief) in enumerate(zip(ed["bullets"], briefs)):
-            user_message += f"  {i+1}. {bullet}\n{brief}\n"
-
-    user_message += """
-For each bullet, follow this process:
-1. Read the tailoring brief — it tells you exactly which JD theme to surface.
-2. Identify the MOST JD-critical element in the bullet (a skill, outcome, or context the JD values).
-3. Move that element to the FRONT. Restructure the sentence so the JD priority is the first thing read.
-4. Add JD-specific framing context if truthful (e.g. "for real-time analytics", "supporting cross-functional stakeholders"). This adds meaning — it is NOT the same as "demonstrating X skills".
-5. Do NOT just swap a synonym ("Built"→"Developed"). That is not improvement. If you cannot find a genuine structural change, produce the best reframe you can rather than returning unchanged.
-
-Return all experiences."""
 
     _client = get_openai_client()
     _settings = get_settings()
-    response = await _client.beta.chat.completions.parse(
-        model=_settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorOutput,
-        temperature=_settings.temp_tailoring,
-    )
 
-    tailored = response.choices[0].message.parsed.tailored_experiences
+    # One focused call per experience, all fired in parallel
+    tailored = list(await asyncio.gather(*[
+        _tailor_one_experience(exp, system_prompt, jd_summary, gap_analysis, jd_parsed, _client, _settings)
+        for exp in experiences
+    ]))
 
     # Enforce 1-to-1: if bullet count drifts, fall back to originals for that experience
     for te in tailored:
@@ -829,7 +849,7 @@ Project/leadership bullets should highlight initiative, technical depth, and tra
 NEVER append filler like "showcasing [skill]", "demonstrating [skill]", "highlighting [skill]", "leveraging expertise in [X]". These instantly mark a bullet as AI-generated. If the ending clause can be deleted and the bullet still makes sense, it was filler. Embed keywords into the ACTION, don't tack praise onto the end.
 
 ## Action Verb Rules
-- NEVER start more than 2 bullets across ALL projects/activities with the same verb.
+- Within the SAME project/activity, avoid starting consecutive bullets with the same verb. Cross-entry repetition is fine.
 - Vary verbs: Built, Implemented, Designed, Created, Engineered, Launched, Automated, Led.
 
 ## Truthfulness Rules
@@ -837,10 +857,10 @@ NEVER append filler like "showcasing [skill]", "demonstrating [skill]", "highlig
 - Preserve the original scope — don't inflate contributions.
 
 ## What "Tailoring" Actually Means
-- REFRAME to lead with the theme the JD cares about.
+- REFRAME to lead with the theme the JD cares about. Move the JD-critical element to the opening clause.
 - ADD JD-relevant framing (e.g. "for real-time analytics") only if truthful.
 - KEEP all existing tech details and metrics.
-- Return VERBATIM only if the bullet ALREADY leads with the most JD-critical theme AND already uses the key JD vocabulary naturally. If the content is relevant but the JD theme is buried mid-sentence, reframe the opening. Cosmetic synonym swaps are NOT tailoring.
+- Every bullet MUST be actively improved. Even a good bullet can be reframed to lead more strongly with the JD priority. Only leave a bullet unchanged if the tailoring brief says there is no JD theme that can be truthfully added.
 
 ## Length Guideline
 - TARGET: 120-170 characters. ACCEPTABLE: 100-200 characters.
@@ -861,18 +881,70 @@ Original: "Built a sentiment analysis tool using BERT and Flask, processing 5K r
 BAD (paraphrasing): "Developed a sentiment analysis application utilizing BERT and Flask for 5K reviews" ← synonym swap, no JD alignment
 GOOD (tailoring): "Built production sentiment analysis pipeline using BERT and Flask, processing 5K reviews for ML-driven insights" ← leads with "production" (JD theme), adds "ML-driven" context
 
-### Example 2 — Bullet already matches JD well
+### Example 2 — Bullet already uses JD vocab but can lead stronger
 Original: "Led a team of 4 to build a real-time dashboard using React and D3.js, winning 2nd place"
-GOOD: Return VERBATIM — already has leadership, tech stack, and quantified outcome.
+JD emphasises: "data visualisation" and "cross-functional collaboration"
+GOOD: "Spearheaded cross-functional team of 4 to deliver real-time data visualisation dashboard (React, D3.js), winning 2nd place" ← leads with "cross-functional" and "data visualisation" (JD themes), preserves all facts
 
 ## Output Rules
-- CRITICAL: If a bullet already matches the JD well, return it EXACTLY as-is. Do NOT make cosmetic changes.
+- CRITICAL: A rewrite must either: (a) reframe the opening to lead with a JD theme, (b) add JD-relevant framing context, or (c) surface a hidden keyword. Synonym swaps alone are NOT improvements. A rewrite 95%+ similar to the original will be rejected.
 - For each change, document what you changed and why in changes_made.
 
 {domain_section}
 
 {rules_section}
 """
+
+
+async def _tailor_one_project(
+    proj: dict,
+    system_prompt: str,
+    jd_summary: str,
+    jd_parsed: dict,
+    client,
+    settings,
+) -> TailoredProject | None:
+    """Fire a focused API call for a single project's bullets. Returns None if no bullets."""
+    bullets = extract_bullet_texts(proj.get("bullets", []))
+    if not bullets:
+        bullets = split_description_to_bullets(proj.get("description") or "")
+    if not bullets:
+        return None
+
+    proj_id = str(proj["id"])
+    name = proj.get("name") or "Unknown"
+    description = proj.get("description") or ""
+    briefs = _build_bullet_briefs(bullets, None, jd_parsed)
+
+    user_message = (
+        f"Target Job Description:\n{jd_summary}\n\n"
+        f"Project to tailor:\n"
+        f"--- {name} (ID: {proj_id}) ---\n"
+    )
+    if description:
+        user_message += f"  Description: {description}\n"
+    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
+        user_message += f"  {i+1}. {bullet}\n{brief}\n"
+    user_message += _BULLET_PROCESS_STEPS + "\nReturn this project."
+
+    response = await client.beta.chat.completions.parse(
+        model=settings.model_name,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        response_format=TailorProjectsOutput,
+        temperature=settings.temp_tailoring,
+    )
+    results = response.choices[0].message.parsed.tailored_projects
+    if results:
+        return results[0]
+
+    return TailoredProject(
+        project_id=proj_id, original_bullets=bullets,
+        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
+        changes_made=[], confidence=0.5,
+    )
 
 
 async def tailor_projects(
@@ -882,10 +954,7 @@ async def tailor_projects(
 ) -> list[TailoredProject]:
     """Tailor selected projects/leadership to match the JD using GPT-4o.
 
-    Args:
-        projects: List of dicts with keys: id, name, description, bullets.
-        jd_parsed: Parsed JD dict.
-        rules_text: Pre-formatted tailoring rules string.
+    Fires one focused API call per project in parallel.
     """
     if not projects:
         return []
@@ -895,65 +964,19 @@ async def tailor_projects(
         domain_section=domain_section,
         rules_section=rules_text,
     )
-
-    # Build project descriptions
-    proj_descriptions = []
-    for proj in projects:
-        bullets = extract_bullet_texts(proj.get("bullets", []))
-        # If no structured bullets, split description into sentences as bullets
-        if not bullets:
-            bullets = split_description_to_bullets(proj.get("description") or "")
-        if not bullets:
-            continue
-
-        proj_descriptions.append({
-            "project_id": str(proj["id"]),
-            "name": proj.get("name") or "Unknown",
-            "description": proj.get("description") or "",
-            "bullets": bullets,
-        })
-
-    if not proj_descriptions:
-        return []
-
     jd_summary = _build_jd_summary(jd_parsed)
-
-    user_message = f"""Target Job Description:
-{jd_summary}
-
-Projects/Leadership to tailor:
-"""
-    for pd in proj_descriptions:
-        user_message += f"\n--- Project: {pd['name']} (ID: {pd['project_id']}) ---\n"
-        if pd["description"]:
-            user_message += f"  Description: {pd['description']}\n"
-        briefs = _build_bullet_briefs(pd["bullets"], None, jd_parsed)
-        for i, (bullet, brief) in enumerate(zip(pd["bullets"], briefs)):
-            user_message += f"  {i+1}. {bullet}\n{brief}\n"
-
-    user_message += """
-For each bullet, follow this process:
-1. Read the tailoring brief above the bullet — it tells you which JD themes to surface.
-2. Decide the lead theme: which JD priority should this bullet open with?
-3. Reframe the bullet to lead with that theme, keeping ALL existing tech details and metrics.
-4. If the bullet already leads with the right theme and matches the JD well, return it VERBATIM — do NOT make cosmetic synonym swaps.
-5. A good tailoring change reframes emphasis and adds JD-relevant context. A bad change just swaps synonyms.
-
-Return all projects."""
 
     _client = get_openai_client()
     _settings = get_settings()
-    response = await _client.beta.chat.completions.parse(
-        model=_settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorProjectsOutput,
-        temperature=_settings.temp_tailoring,
-    )
 
-    tailored = response.choices[0].message.parsed.tailored_projects
+    results = await asyncio.gather(*[
+        _tailor_one_project(proj, system_prompt, jd_summary, jd_parsed, _client, _settings)
+        for proj in projects
+    ])
+    tailored = [r for r in results if r is not None]
+
+    if not tailored:
+        return []
 
     # Enforce 1-to-1: if bullet count drifts, fall back to originals for that project
     for tp in tailored:
@@ -1010,6 +1033,53 @@ class TailorActivitiesOutput(BaseModel):
     tailored_activities: list[TailoredActivity]
 
 
+async def _tailor_one_activity(
+    act: dict,
+    system_prompt: str,
+    jd_summary: str,
+    jd_parsed: dict,
+    client,
+    settings,
+) -> TailoredActivity | None:
+    """Fire a focused API call for a single activity's bullets. Returns None if no bullets."""
+    bullets = extract_bullet_texts(act.get("bullets", []))
+    if not bullets:
+        return None
+
+    act_id = str(act["id"])
+    org = act.get("organization") or "Unknown"
+    role = act.get("role_title") or ""
+    briefs = _build_bullet_briefs(bullets, None, jd_parsed)
+
+    user_message = (
+        f"Target Job Description:\n{jd_summary}\n\n"
+        f"Activity to tailor:\n"
+        f"--- {role} at {org} (ID: {act_id}) ---\n"
+    )
+    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
+        user_message += f"  {i+1}. {bullet}\n{brief}\n"
+    user_message += _BULLET_PROCESS_STEPS + "\nReturn this activity."
+
+    response = await client.beta.chat.completions.parse(
+        model=settings.model_name,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user", "content": user_message},
+        ],
+        response_format=TailorActivitiesOutput,
+        temperature=settings.temp_tailoring,
+    )
+    results = response.choices[0].message.parsed.tailored_activities
+    if results:
+        return results[0]
+
+    return TailoredActivity(
+        activity_id=act_id, original_bullets=bullets,
+        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
+        changes_made=[], confidence=0.5,
+    )
+
+
 async def tailor_activities(
     activities: list[dict],
     jd_parsed: dict,
@@ -1017,10 +1087,7 @@ async def tailor_activities(
 ) -> list[TailoredActivity]:
     """Tailor selected activities (leadership/extracurricular) to match the JD using GPT-4o.
 
-    Args:
-        activities: List of dicts with keys: id, organization, role_title, bullets.
-        jd_parsed: Parsed JD dict.
-        rules_text: Pre-formatted tailoring rules string.
+    Fires one focused API call per activity in parallel.
     """
     if not activities:
         return []
@@ -1030,60 +1097,27 @@ async def tailor_activities(
         domain_section=domain_section,
         rules_section=rules_text,
     )
-
-    # Build activity descriptions
-    act_descriptions = []
-    for act in activities:
-        bullets = extract_bullet_texts(act.get("bullets", []))
-        if not bullets:
-            continue
-
-        act_descriptions.append({
-            "activity_id": str(act["id"]),
-            "organization": act.get("organization") or "Unknown",
-            "role_title": act.get("role_title") or "",
-            "bullets": bullets,
-        })
-
-    if not act_descriptions:
-        return []
-
     jd_summary = _build_jd_summary(jd_parsed)
-
-    user_message = f"""Target Job Description:
-{jd_summary}
-
-Activities/Leadership to tailor:
-"""
-    for ad in act_descriptions:
-        user_message += f"\n--- {ad['role_title']} at {ad['organization']} (ID: {ad['activity_id']}) ---\n"
-        briefs = _build_bullet_briefs(ad["bullets"], None, jd_parsed)
-        for i, (bullet, brief) in enumerate(zip(ad["bullets"], briefs)):
-            user_message += f"  {i+1}. {bullet}\n{brief}\n"
-
-    user_message += """
-For each bullet, follow this process:
-1. Read the tailoring brief above the bullet — it tells you which JD themes to surface.
-2. Decide the lead theme: which JD priority should this bullet open with?
-3. Reframe the bullet to lead with that theme, keeping ALL existing tech details and metrics.
-4. If the bullet already leads with the right theme and matches the JD well, return it VERBATIM — do NOT make cosmetic synonym swaps.
-5. A good tailoring change reframes emphasis and adds JD-relevant context. A bad change just swaps synonyms.
-
-Return all activities."""
 
     _client = get_openai_client()
     _settings = get_settings()
-    response = await _client.beta.chat.completions.parse(
-        model=_settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorActivitiesOutput,
-        temperature=_settings.temp_tailoring,
-    )
 
-    tailored = response.choices[0].message.parsed.tailored_activities
+    results = await asyncio.gather(*[
+        _tailor_one_activity(act, system_prompt, jd_summary, jd_parsed, _client, _settings)
+        for act in activities
+    ])
+    tailored = [r for r in results if r is not None]
+
+    if not tailored:
+        return []
+
+    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that activity
+    for ta in tailored:
+        if len(ta.suggested_bullets) != len(ta.original_bullets):
+            ta.suggested_bullets = [
+                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
+                for b in ta.original_bullets
+            ]
 
     # Post-process: revert trivial changes
     for ta in tailored:
