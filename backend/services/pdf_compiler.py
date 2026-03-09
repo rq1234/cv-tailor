@@ -53,8 +53,9 @@ async def compile_latex_to_pdf(latex_content: str) -> bytes:
             raise RuntimeError("PDF compilation timed out after 120 seconds")
 
         if proc.returncode != 0:
-            logger.error("Tectonic compilation failed:\n%s", stderr.decode(errors="replace"))
-            raise RuntimeError("PDF compilation failed")
+            stderr_text = stderr.decode(errors="replace")
+            logger.error("Tectonic compilation failed (rc=%d):\n%s", proc.returncode, stderr_text)
+            raise RuntimeError(f"PDF compilation failed: {stderr_text[:400]}")
 
         pdf_path = Path(tmpdir) / "cv.pdf"
         if not pdf_path.exists():
