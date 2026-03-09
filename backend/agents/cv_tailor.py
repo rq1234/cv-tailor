@@ -375,7 +375,7 @@ Instead of TELLING ("demonstrating quantitative analysis skills"), SHOW by embed
 The rule is simple: if you can delete the ending clause and the bullet still makes sense, the clause was filler. Real tailoring changes the FRAMING of the action, not tacking praise onto the end.
 
 ## Action Verb Rules
-- NEVER start more than 2 bullets across the ENTIRE CV with the same verb. If you've already used "Developed" twice, use a synonym: Built, Engineered, Created, Designed, Implemented, Automated, Architected, Launched.
+- Within the SAME experience section, avoid starting consecutive bullets with the same verb. Using "Built" in one job and "Built" in another job is fine — repetition only looks bad when multiple bullets in the same role all open the same way.
 - Vary verb strength by seniority: entry (built, developed, analyzed, created) → senior (architected, spearheaded, drove) → lead (defined, established, transformed).
 
 ## Truthfulness Rules
