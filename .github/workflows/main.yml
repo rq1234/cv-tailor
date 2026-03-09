@@ -29,12 +29,7 @@ jobs:
           docker build -t $REGISTRY/cv-tailor-backend:latest .
           docker push $REGISTRY/cv-tailor-backend:latest
 
-      - name: Deploy to App Runner
-        run: |
-          aws apprunner start-deployment \
-            --service-arn ${{ secrets.APPRUNNER_SERVICE_ARN }} \
-            --query 'OperationId' \
-            --output text
+      # App Runner auto-deploys when the ECR image is updated — no explicit trigger needed.
 
   deploy-frontend:
     name: Frontend — Amplify
