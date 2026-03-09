@@ -14,8 +14,17 @@ _NUMBER_RE = re.compile(
 )
 
 _BANNED_PHRASE_RE = re.compile(
-    r"\b(?:showcasing|demonstrating|highlighting|leveraging expertise in)\s+\w",
+    r"\b(?:showcasing|demonstrating|highlighting|leveraging expertise in"
+    r"|advancing\s+\w+(?:\s+\w+)?\s+techniques?"  # "advancing financial application techniques"
+    r"|exceptional\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?|qualities)"  # "exceptional analytical skills"
+    r")\s*\w?",
     re.IGNORECASE,
+)
+
+# Matches CamelCase tokens, pure acronyms, and letter+digit combos (e.g. EC2, S3).
+# Used to detect when the model silently drops a tech term from a bullet.
+_TECH_TOKEN_RE = re.compile(
+    r"\b(?:[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*|[A-Z]{2,}\d*|[A-Z]\d+\w*)\b"
 )
 
 
@@ -26,6 +35,27 @@ def _extract_numbers(text: str) -> set[str]:
 def _has_hallucinated_numbers(original: str, suggested: str) -> bool:
     """True if suggested introduces numbers not present in original."""
     return bool(_extract_numbers(suggested) - _extract_numbers(original))
+
+
+def _has_lost_tech_terms(original: str, suggested: str) -> bool:
+    """True if suggestion drops CamelCase or acronym tech terms that were in original."""
+    orig_tokens = set(_TECH_TOKEN_RE.findall(original))
+    if not orig_tokens:
+        return False
+    sugg_tokens = set(_TECH_TOKEN_RE.findall(suggested))
+    return bool(orig_tokens - sugg_tokens)
+
+
+def _is_over_compressed(original: str, suggested: str, threshold: float = 0.80) -> bool:
+    """True if suggestion is ≥20% shorter than original (technical detail likely dropped).
+
+    Short originals (<70 chars) are excluded — there's not much detail to lose.
+    """
+    orig_len = len(original.strip())
+    if orig_len < 70:
+        return False
+    sugg_len = len(suggested.strip())
+    return sugg_len < orig_len * threshold
 
 from pydantic import BaseModel, Field
 
@@ -438,6 +468,7 @@ GOOD (no JD theme possible): Return unchanged ONLY when the brief says no JD the
 ## Output Rules
 - CRITICAL: A change must either: (a) reframe the opening to lead with a JD Key Responsibility theme, (b) add a JD-relevant outcome signal or framing context, or (c) meaningfully surface a hidden keyword. Synonym swaps alone ("Built"→"Developed", "using"→"utilizing") are NOT improvements. A rewrite that is 95%+ similar to the original will be rejected — it must read noticeably differently.
 - CRITICAL: Return EXACTLY the same number of suggested_bullets as original_bullets — one per original bullet. Never split a bullet into two. Never merge two into one.
+- CRITICAL: NEVER remove technical terms, model names, framework names, or specific methods from the original bullet. Every tech term (XGBoost, SHAP, PostgreSQL, RAG, etc.) that appears in the original must appear in the rewrite. Dropping a tech term is always wrong.
 - For each change, document what you changed and why in changes_made. If you shortened a bullet, explain what you removed and why it was safe to remove.
 - In requirements_addressed, list which JD requirements this experience's bullets now cover.
 - Set confidence based on how well the rewrite matches the JD (0.5 = minimal, 1.0 = strong match).
@@ -797,6 +828,18 @@ async def tailor_experiences(
                     has_placeholder=False,
                     outcome_type=suggested.outcome_type,
                 )
+            elif _is_over_compressed(orig, suggested.text):
+                te.suggested_bullets[i] = TailoredBullet(
+                    text=orig,
+                    has_placeholder=False,
+                    outcome_type=suggested.outcome_type,
+                )
+            elif _has_lost_tech_terms(orig, suggested.text):
+                te.suggested_bullets[i] = TailoredBullet(
+                    text=orig,
+                    has_placeholder=False,
+                    outcome_type=suggested.outcome_type,
+                )
             elif _has_hallucinated_numbers(orig, suggested.text):
                 te.suggested_bullets[i] = TailoredBullet(
                     text=orig,
@@ -888,6 +931,7 @@ GOOD: "Spearheaded cross-functional team of 4 to deliver real-time data visualis
 
 ## Output Rules
 - CRITICAL: A rewrite must either: (a) reframe the opening to lead with a JD theme, (b) add JD-relevant framing context, or (c) surface a hidden keyword. Synonym swaps alone are NOT improvements. A rewrite 95%+ similar to the original will be rejected.
+- CRITICAL: NEVER remove technical terms, model names, framework names, or specific methods. Every tech term in the original must appear in the rewrite. Dropping a tech term is always wrong.
 - For each change, document what you changed and why in changes_made.
 
 {domain_section}
@@ -994,6 +1038,14 @@ async def tailor_projects(
             orig_norm = orig.lower().strip().rstrip(".")
             sugg_norm = suggested.text.lower().strip().rstrip(".")
             if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
+                tp.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _is_over_compressed(orig, suggested.text):
+                tp.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_lost_tech_terms(orig, suggested.text):
                 tp.suggested_bullets[i] = TailoredBullet(
                     text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
                 )
@@ -1127,6 +1179,14 @@ async def tailor_activities(
             orig_norm = orig.lower().strip().rstrip(".")
             sugg_norm = suggested.text.lower().strip().rstrip(".")
             if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
+                ta.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _is_over_compressed(orig, suggested.text):
+                ta.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_lost_tech_terms(orig, suggested.text):
                 ta.suggested_bullets[i] = TailoredBullet(
                     text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
                 )
