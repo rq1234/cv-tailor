@@ -30,23 +30,4 @@ jobs:
           docker push $REGISTRY/cv-tailor-backend:latest
 
       # App Runner auto-deploys when the ECR image is updated — no explicit trigger needed.
-
-  deploy-frontend:
-    name: Frontend — Amplify
-    runs-on: ubuntu-latest
-    steps:
-      - name: Configure AWS credentials
-        uses: aws-actions/configure-aws-credentials@v4
-        with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          aws-region: us-east-1
-
-      - name: Trigger Amplify deployment
-        run: |
-          aws amplify start-job \
-            --app-id ${{ secrets.AMPLIFY_APP_ID }} \
-            --branch-name main \
-            --job-type RELEASE \
-            --query 'jobSummary.{status:status,jobId:jobId}' \
-            --output table
+      # Amplify auto-deploys from GitHub on push to main — no explicit trigger needed.
