@@ -42,7 +42,7 @@ class Settings(BaseSettings):
     # ── Temperature presets ──
     temp_parsing: float = 0.1
     temp_gap_analysis: float = 0.2
-    temp_tailoring: float = 0.4
+    temp_tailoring: float = 0.72
 
     # ── Deduplication thresholds ──
     near_duplicate_threshold: float = 0.92

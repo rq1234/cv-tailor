@@ -121,6 +121,7 @@ async def _retry_bullet(
             or _has_hallucinated_numbers(original, result)
             or _BANNED_PHRASE_RE.search(result)
             or not result
+            or _similarity(original.lower().strip().rstrip("."), result.lower().strip().rstrip(".")) > 0.88
         ):
             return original
         return result
@@ -146,7 +147,7 @@ async def _apply_retry_pass(
             orig_norm = orig.lower().strip().rstrip(".")
             sugg_norm = suggested.text.lower().strip().rstrip(".")
 
-            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
+            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.85:
                 retry_queue.append((entry_idx, i, orig, "too_similar"))
             elif _is_over_compressed(orig, suggested.text):
                 entry.suggested_bullets[i] = TailoredBullet(
