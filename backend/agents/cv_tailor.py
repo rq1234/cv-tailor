@@ -14,10 +14,16 @@ _NUMBER_RE = re.compile(
 )
 
 _BANNED_PHRASE_RE = re.compile(
-    r"\b(?:showcasing|demonstrating|highlighting|leveraging expertise in"
-    r"|advancing\s+\w+(?:\s+\w+)?\s+techniques?"  # "advancing financial application techniques"
-    r"|exceptional\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?|qualities)"  # "exceptional analytical skills"
-    r")\s*\w?",
+    r"\b(?:"
+    r"showcasing|showcases"
+    r"|demonstrating\s+(?:strong\s+)?(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency|understanding|knowledge|capabilities?)"
+    r"|highlighting\s+(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency)"
+    r"|leveraging expertise"
+    r"|leveraging\s+(?:strong\s+)?(?:\w+\s+){0,2}(?:skills?|abilities?|expertise)"
+    r"|advancing\s+\w+(?:\s+\w+)?\s+techniques?"
+    r"|exceptional\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?|qualities)"
+    r"|strong\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?)\s*[,.]?\s*$"
+    r")",
     re.IGNORECASE,
 )
 
@@ -64,6 +70,115 @@ from backend.config import get_settings
 from backend.utils import extract_bullet_texts, split_description_to_bullets
 
 from .domain_guidance import _get_domain_guidance
+
+
+async def _retry_bullet(
+    original: str,
+    jd_summary: str,
+    reason: str,
+    client,
+    settings,
+) -> str:
+    """Retry a single bullet that failed quality checks with a direct rewrite prompt.
+
+    Used when the first pass was either too conservative (near-identical to original)
+    or contained banned filler phrases. Falls back to original if retry also fails.
+    """
+    if reason == "too_similar":
+        failure_note = (
+            "Your previous rewrite was nearly identical to the original — just synonym swaps. "
+            "That is NOT tailoring. Rewrite it with a different sentence structure."
+        )
+    else:
+        failure_note = (
+            "Your previous rewrite contained banned filler phrases like 'showcasing', "
+            "'demonstrating expertise', 'leveraging expertise in', or similar. These are forbidden."
+        )
+
+    prompt = (
+        f"{failure_note}\n\n"
+        f"Rewrite this CV bullet so it naturally fits the target role. Rules:\n"
+        f"- Keep every fact, number, and tech name from the original — do not invent anything\n"
+        f"- Lead with what the job cares about most (see role context below)\n"
+        f"- Write it the way a human would — no appended praise like 'showcasing X skills'\n"
+        f"- A complete sentence restructure is encouraged — preserve facts, not words\n"
+        f"- Output ONLY the bullet text, nothing else\n\n"
+        f"Original: {original}\n\n"
+        f"Role context:\n{jd_summary}"
+    )
+
+    try:
+        response = await client.chat.completions.create(
+            model=settings.model_name,
+            messages=[{"role": "user", "content": prompt}],
+            temperature=0.8,
+            max_tokens=220,
+        )
+        result = response.choices[0].message.content.strip().strip('"\'').lstrip("- ").strip()
+        # Validate: if retry also drops tech or invents numbers, fall back to original
+        if (
+            _has_lost_tech_terms(original, result)
+            or _has_hallucinated_numbers(original, result)
+            or _BANNED_PHRASE_RE.search(result)
+            or not result
+        ):
+            return original
+        return result
+    except Exception:
+        return original
+
+
+async def _apply_retry_pass(
+    tailored: list,
+    jd_summary: str,
+    client,
+    settings,
+) -> None:
+    """Replace silent reverts with targeted retries for recoverable failures.
+
+    - too_similar / banned_phrase → retry with a direct rewrite prompt
+    - over_compressed / lost_tech / hallucinated_numbers → revert to original (data safety)
+    """
+    retry_queue: list[tuple[int, int, str, str]] = []  # (entry_idx, bullet_idx, orig, reason)
+
+    for entry_idx, entry in enumerate(tailored):
+        for i, (orig, suggested) in enumerate(zip(entry.original_bullets, entry.suggested_bullets)):
+            orig_norm = orig.lower().strip().rstrip(".")
+            sugg_norm = suggested.text.lower().strip().rstrip(".")
+
+            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
+                retry_queue.append((entry_idx, i, orig, "too_similar"))
+            elif _is_over_compressed(orig, suggested.text):
+                entry.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_lost_tech_terms(orig, suggested.text):
+                entry.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _has_hallucinated_numbers(orig, suggested.text):
+                entry.suggested_bullets[i] = TailoredBullet(
+                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
+                )
+            elif _BANNED_PHRASE_RE.search(suggested.text):
+                retry_queue.append((entry_idx, i, orig, "banned_phrase"))
+
+    if not retry_queue:
+        return
+
+    retry_results = await asyncio.gather(*[
+        _retry_bullet(orig, jd_summary, reason, client, settings)
+        for _, _, orig, reason in retry_queue
+    ])
+
+    for (entry_idx, bullet_idx, _orig, _reason), new_text in zip(retry_queue, retry_results):
+        entry = tailored[entry_idx]
+        old = entry.suggested_bullets[bullet_idx]
+        entry.suggested_bullets[bullet_idx] = TailoredBullet(
+            text=new_text,
+            has_placeholder=old.has_placeholder,
+            outcome_type=old.outcome_type,
+        )
 
 
 class TailoredBullet(BaseModel):
@@ -420,13 +535,16 @@ The rule is simple: if you can delete the ending clause and the bullet still mak
 - Lead/Director: Focus on strategy, team outcomes, business impact. "Defined strategy for X across N teams, resulting in [X]% Y."
 
 ## What "Tailoring" Actually Means
-Tailoring is NOT paraphrasing or shortening. Tailoring means:
-1. REFRAME the bullet to lead with the theme the JD cares about (e.g. if JD says "data pipelines", lead with the pipeline aspect, not the deployment aspect). Move the most JD-critical element to the FRONT of the sentence.
-2. ADD JD-relevant framing language (e.g. add "for real-time analytics" if the JD emphasizes real-time systems), but ONLY if truthful.
-3. KEEP all existing technical details — they are the substance of the bullet.
-4. Every bullet MUST be actively improved. Assume every bullet can be made more JD-relevant. If it already uses the right vocabulary, restructure it to LEAD more strongly with the JD priority. A bullet that is unchanged is a missed opportunity — treat it as a failure unless the tailoring brief explicitly says the bullet is already optimal.
+Think of the original bullet as a **fact sheet**. The facts are fixed — every number, tech name, scope, and achievement must be preserved. But the framing, emphasis, and sentence structure should be **completely rebuilt** for this job.
 
-The ONLY reason to leave a bullet unchanged is if the tailoring brief says there is no JD keyword match AND no related theme to surface. In all other cases, produce a different bullet.
+Ask yourself: "If this candidate had written their CV knowing this exact job description, how would this bullet read?" Write that version.
+
+1. **REWRITE from scratch**, leading with what the JD cares about most. The original sentence structure is a suggestion, not a constraint. A complete restructure is encouraged.
+2. **EMBED JD language into the action itself** — "Built real-time data pipelines using Airflow" not "Built Airflow pipelines, supporting real-time analytics objectives." The JD theme goes IN the doing, not tacked on at the end.
+3. **PRESERVE every fact**: tech names, numbers, scope, outcomes. These are non-negotiable.
+4. A bullet that reads noticeably differently — with the same facts — is always better than one that barely changed.
+
+The ONLY reason to leave a bullet close to unchanged is if it already perfectly leads with the right JD theme and no structural improvement is possible. That should be rare.
 
 ## Length Guideline
 - TARGET: 120-170 characters per bullet. This keeps bullets detailed and substantive.
@@ -812,46 +930,8 @@ async def tailor_experiences(
                 for b in te.original_bullets
             ]
 
-    # Post-process: revert trivial changes where the model barely edited the bullet
-    for te in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(te.original_bullets, te.suggested_bullets)
-        ):
-            # Normalize for comparison: lowercase, strip whitespace/punctuation
-            orig_norm = orig.lower().strip().rstrip(".")
-            sugg_norm = suggested.text.lower().strip().rstrip(".")
-            # If the only difference is casing, spelling, or trailing punctuation,
-            # revert to the original
-            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
-                te.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
-                )
-            elif _is_over_compressed(orig, suggested.text):
-                te.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
-                )
-            elif _has_lost_tech_terms(orig, suggested.text):
-                te.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
-                )
-            elif _has_hallucinated_numbers(orig, suggested.text):
-                te.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
-                )
-            elif _BANNED_PHRASE_RE.search(suggested.text):
-                te.suggested_bullets[i] = TailoredBullet(
-                    text=orig,
-                    has_placeholder=False,
-                    outcome_type=suggested.outcome_type,
-                )
+    # Post-process: retry conservative/banned bullets; revert data-safety failures
+    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
@@ -1030,33 +1110,8 @@ async def tailor_projects(
                 for b in tp.original_bullets
             ]
 
-    # Post-process: revert trivial changes
-    for tp in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(tp.original_bullets, tp.suggested_bullets)
-        ):
-            orig_norm = orig.lower().strip().rstrip(".")
-            sugg_norm = suggested.text.lower().strip().rstrip(".")
-            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
-                tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _is_over_compressed(orig, suggested.text):
-                tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_lost_tech_terms(orig, suggested.text):
-                tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_hallucinated_numbers(orig, suggested.text):
-                tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _BANNED_PHRASE_RE.search(suggested.text):
-                tp.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
+    # Post-process: retry conservative/banned bullets; revert data-safety failures
+    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=105, trim_high=145)
@@ -1171,33 +1226,8 @@ async def tailor_activities(
                 for b in ta.original_bullets
             ]
 
-    # Post-process: revert trivial changes
-    for ta in tailored:
-        for i, (orig, suggested) in enumerate(
-            zip(ta.original_bullets, ta.suggested_bullets)
-        ):
-            orig_norm = orig.lower().strip().rstrip(".")
-            sugg_norm = suggested.text.lower().strip().rstrip(".")
-            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.95:
-                ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _is_over_compressed(orig, suggested.text):
-                ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_lost_tech_terms(orig, suggested.text):
-                ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_hallucinated_numbers(orig, suggested.text):
-                ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _BANNED_PHRASE_RE.search(suggested.text):
-                ta.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
+    # Post-process: retry conservative/banned bullets; revert data-safety failures
+    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
 
     # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
