@@ -3,7 +3,13 @@
     "allow": [
       "Bash(python3 -m py_compile:*)",
       "Bash(npx next build)",
-      "Bash(uv lock:*)"
+      "Bash(uv lock:*)",
+      "Bash(python -m py_compile:*)",
+      "Bash(ls:*)",
+      "Bash(python:*)",
+      "Bash(npx next lint)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)"
     ]
   }
 }

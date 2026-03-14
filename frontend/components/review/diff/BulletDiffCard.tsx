@@ -8,7 +8,8 @@ import {
 } from "../types";
 
 // Matches: 50%, $3.2B, £1.4m, 1,400, 500k, 3.2x, numbers like 1400
-const METRIC_RE = /(\$|£|€)?[\d,]+\.?\d*(%|[xX]|[kKmMbBtT]n?)?(?:\+)?|\d+\.?\d*(%|[xX])/g;
+// Uses \d+(?:,\d+)* for thousands separators to avoid matching trailing commas in "EC2," or "S3,"
+const METRIC_RE = /(\$|£|€)?\d+(?:,\d+)*\.?\d*(%|[xX]|[kKmMbBtT]n?)?(?:\+)?/g;
 
 function extractMetrics(text: string): string[] {
   return Array.from(new Set(text.match(METRIC_RE) ?? []));

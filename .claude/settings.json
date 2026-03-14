@@ -1,0 +1,26 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(pnpm install:*)",
+      "Bash(head:*)",
+      "Bash(echo:*)",
+      "Bash(FILTER_BRANCH_SQUELCH_WARNING=1 git filter-branch:*)",
+      "Bash(git stash:*)",
+      "Bash(npm install --save-dev vitest)",
+      "Bash(pnpm add -D vitest)",
+      "Bash(pnpm test)",
+      "Bash(git filter-branch -f --msg-filter 'python3 /tmp/strip_claude.py' -- --all)",
+      "Bash(pnpm build)",
+      "Bash(git -C \"/c/Users/rongq/OneDrive/0 Rong/01 Documents/cv-tailor\" log --oneline -20)",
+      "Read(//c/Users/rongq/OneDrive/0 Rong/01 Documents/cv-tailor/backend/$dir/**)",
+      "Bash(done)",
+      "Read(//c/Users/rongq/.claude/projects/c--Users-rongq-OneDrive-0-Rong-01-Documents-cv-tailor/f807480f-b771-447e-b17c-33d403c32c81/tool-results/**)",
+      "Read(//c/Users/rongq/.claude/projects/c--Users-rongq-OneDrive-0-Rong-01-Documents-cv-tailor/memory/**)",
+      "Bash(npm run build)",
+      "Read(//c/Users/rongq/AppData/Local/Temp/claude/c--Users-rongq-OneDrive-0-Rong-01-Documents-cv-tailor/tasks/**)"
+    ],
+    "additionalDirectories": [
+      "c:\\Users\\rongq\\.claude\\projects\\c--Users-rongq-OneDrive-0-Rong-01-Documents-cv-tailor"
+    ]
+  }
+}

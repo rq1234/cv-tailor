@@ -69,59 +69,52 @@ from backend.clients import get_openai_client
 from backend.config import get_settings
 from backend.utils import extract_bullet_texts, split_description_to_bullets
 
-from .domain_guidance import _get_domain_guidance
 
 
-async def _retry_bullet(
+async def _tailor_one_bullet(
     original: str,
+    brief: str,
     jd_summary: str,
-    reason: str,
     client,
     settings,
 ) -> str:
-    """Retry a single bullet that failed quality checks with a direct rewrite prompt.
+    """Tailor a single bullet with a focused, direct prompt — one bullet, one JD target.
 
-    Used when the first pass was either too conservative (near-identical to original)
-    or contained banned filler phrases. Falls back to original if retry also fails.
+    This mirrors the ChatGPT approach: given this bullet, rewrite it for this specific
+    JD requirement. Falls back to original if the result fails quality checks.
     """
-    if reason == "too_similar":
-        failure_note = (
-            "Your previous rewrite was nearly identical to the original — just synonym swaps. "
-            "That is NOT tailoring. Rewrite it with a different sentence structure."
-        )
-    else:
-        failure_note = (
-            "Your previous rewrite contained banned filler phrases like 'showcasing', "
-            "'demonstrating expertise', 'leveraging expertise in', or similar. These are forbidden."
-        )
-
     prompt = (
-        f"{failure_note}\n\n"
-        f"Rewrite this CV bullet so it naturally fits the target role. Rules:\n"
-        f"- Keep every fact, number, and tech name from the original — do not invent anything\n"
-        f"- Lead with what the job cares about most (see role context below)\n"
-        f"- Write it the way a human would — no appended praise like 'showcasing X skills'\n"
-        f"- A complete sentence restructure is encouraged — preserve facts, not words\n"
-        f"- Output ONLY the bullet text, nothing else\n\n"
-        f"Original: {original}\n\n"
-        f"Role context:\n{jd_summary}"
+        f"Rewrite this CV bullet to better match the target job.\n\n"
+        f"Original bullet:\n{original}\n\n"
+        f"Job description:\n{jd_summary}\n\n"
+        f"What to focus on for this bullet:\n{brief.strip()}\n\n"
+        f"Rules:\n"
+        f"- Keep every fact, number, and technology name from the original\n"
+        f"- Restructure the sentence — do not just swap synonyms\n"
+        f"- Lead with the most relevant aspect for this job\n"
+        f"- Embed JD themes into the action itself, never as appended phrases like 'showcasing X' or 'demonstrating Y'\n"
+        f"- Output ONLY the rewritten bullet text, nothing else"
     )
 
     try:
         response = await client.chat.completions.create(
             model=settings.model_name,
             messages=[{"role": "user", "content": prompt}],
-            temperature=0.8,
+            temperature=settings.temp_tailoring,
             max_tokens=220,
         )
         result = response.choices[0].message.content.strip().strip('"\'').lstrip("- ").strip()
-        # Validate: if retry also drops tech or invents numbers, fall back to original
+
+        orig_norm = original.lower().strip().rstrip(".")
+        res_norm = result.lower().strip().rstrip(".")
+
         if (
-            _has_lost_tech_terms(original, result)
+            not result
+            or _has_lost_tech_terms(original, result)
             or _has_hallucinated_numbers(original, result)
             or _BANNED_PHRASE_RE.search(result)
-            or not result
-            or _similarity(original.lower().strip().rstrip("."), result.lower().strip().rstrip(".")) > 0.88
+            or _is_over_compressed(original, result)
+            or _similarity(orig_norm, res_norm) > 0.85
         ):
             return original
         return result
@@ -129,57 +122,13 @@ async def _retry_bullet(
         return original
 
 
-async def _apply_retry_pass(
-    tailored: list,
-    jd_summary: str,
-    client,
-    settings,
-) -> None:
-    """Replace silent reverts with targeted retries for recoverable failures.
-
-    - too_similar / banned_phrase → retry with a direct rewrite prompt
-    - over_compressed / lost_tech / hallucinated_numbers → revert to original (data safety)
-    """
-    retry_queue: list[tuple[int, int, str, str]] = []  # (entry_idx, bullet_idx, orig, reason)
-
-    for entry_idx, entry in enumerate(tailored):
-        for i, (orig, suggested) in enumerate(zip(entry.original_bullets, entry.suggested_bullets)):
-            orig_norm = orig.lower().strip().rstrip(".")
-            sugg_norm = suggested.text.lower().strip().rstrip(".")
-
-            if orig_norm == sugg_norm or _similarity(orig_norm, sugg_norm) > 0.85:
-                retry_queue.append((entry_idx, i, orig, "too_similar"))
-            elif _is_over_compressed(orig, suggested.text):
-                entry.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_lost_tech_terms(orig, suggested.text):
-                entry.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _has_hallucinated_numbers(orig, suggested.text):
-                entry.suggested_bullets[i] = TailoredBullet(
-                    text=orig, has_placeholder=False, outcome_type=suggested.outcome_type,
-                )
-            elif _BANNED_PHRASE_RE.search(suggested.text):
-                retry_queue.append((entry_idx, i, orig, "banned_phrase"))
-
-    if not retry_queue:
-        return
-
-    retry_results = await asyncio.gather(*[
-        _retry_bullet(orig, jd_summary, reason, client, settings)
-        for _, _, orig, reason in retry_queue
-    ])
-
-    for (entry_idx, bullet_idx, _orig, _reason), new_text in zip(retry_queue, retry_results):
-        entry = tailored[entry_idx]
-        old = entry.suggested_bullets[bullet_idx]
-        entry.suggested_bullets[bullet_idx] = TailoredBullet(
-            text=new_text,
-            has_placeholder=old.has_placeholder,
-            outcome_type=old.outcome_type,
-        )
+def _infer_outcome_type(text: str) -> str:
+    """Infer outcome type from bullet text without asking the model."""
+    if "[X]" in text or "[x]" in text:
+        return "placeholder"
+    if _extract_numbers(text):
+        return "quantified"
+    return "qualitative"
 
 
 class TailoredBullet(BaseModel):
@@ -599,14 +548,6 @@ GOOD (no JD theme possible): Return unchanged ONLY when the brief says no JD the
 {rules_section}
 """
 
-# Shared step-by-step instructions appended to every per-entry user message.
-_BULLET_PROCESS_STEPS = """
-For each bullet, follow this process:
-1. Read the tailoring brief — it tells you exactly which JD theme to surface.
-2. Identify the MOST JD-critical element in the bullet (a skill, outcome, or context the JD values).
-3. Move that element to the FRONT. Restructure the sentence so the JD priority is the first thing read.
-4. Add JD-specific framing context if truthful (e.g. "for real-time analytics", "supporting cross-functional stakeholders"). This adds meaning — it is NOT the same as "demonstrating X skills".
-5. Do NOT just swap a synonym ("Built"→"Developed"). That is not improvement. Produce the best structural reframe you can."""
 
 
 # Bidirectional abbreviation ↔ expansion table.  Used to normalise keywords
@@ -887,16 +828,15 @@ def _build_bullet_briefs(
     return briefs
 
 
-async def _tailor_one_experience(
+async def _tailor_experience_bullets(
     exp: dict,
-    system_prompt: str,
     jd_summary: str,
     gap_analysis: dict | None,
     jd_parsed: dict,
     client,
     settings,
 ) -> TailoredExperience:
-    """Fire a focused API call for a single experience's bullets."""
+    """Tailor each bullet with its own focused call — one bullet, one JD target."""
     bullets = extract_bullet_texts(exp.get("bullets", []))
     exp_id = str(exp["id"])
 
@@ -906,36 +846,30 @@ async def _tailor_one_experience(
             suggested_bullets=[], changes_made=[], confidence=0.5,
         )
 
-    company = exp.get("company") or "Unknown"
-    role = exp.get("role_title") or "Unknown"
     briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed)
 
-    user_message = (
-        f"Target Job Description:\n{jd_summary}\n\n"
-        f"Experience to tailor:\n"
-        f"--- {company} — {role} (ID: {exp_id}) ---\n"
-    )
-    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
-        user_message += f"  {i+1}. {bullet}\n{brief}\n"
-    user_message += _BULLET_PROCESS_STEPS + "\nReturn this experience."
+    rewritten = list(await asyncio.gather(*[
+        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        for bullet, brief in zip(bullets, briefs)
+    ]))
 
-    response = await client.beta.chat.completions.parse(
-        model=settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorOutput,
-        temperature=settings.temp_tailoring,
-    )
-    results = response.choices[0].message.parsed.tailored_experiences
-    if results:
-        return results[0]
+    suggested = [
+        TailoredBullet(
+            text=text,
+            has_placeholder="[X]" in text or "[x]" in text,
+            outcome_type=_infer_outcome_type(text),
+        )
+        for text in rewritten
+    ]
+    changed = sum(1 for o, s in zip(bullets, suggested) if o != s.text)
+    confidence = round(changed / len(bullets), 2) if bullets else 0.5
 
     return TailoredExperience(
-        experience_id=exp_id, original_bullets=bullets,
-        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
-        changes_made=[], confidence=0.5,
+        experience_id=exp_id,
+        original_bullets=bullets,
+        suggested_bullets=suggested,
+        changes_made=[],
+        confidence=confidence,
     )
 
 
@@ -945,69 +879,18 @@ async def tailor_experiences(
     gap_analysis: dict | None = None,
     rules_text: str = "",
 ) -> list[TailoredExperience]:
-    """Tailor selected experiences to match the JD using GPT-4o.
-
-    Fires one focused API call per experience in parallel so the model
-    gives full attention to each role's bullets rather than spreading
-    attention across the entire CV at once.
-    """
-    # Build gap analysis context for the prompt
-    gap_section = ""
-    if gap_analysis:
-        mappings = gap_analysis.get("mappings", [])
-        gaps = [m for m in mappings if m.get("status") == "gap"]
-        partial = [m for m in mappings if m.get("status") == "partial_match"]
-        warnings = gap_analysis.get("keyword_density_warnings", [])
-
-        parts = []
-        if partial:
-            parts.append("## Partial Matches to Strengthen\nThese requirements have adjacent experience — reframe bullets to surface relevance:")
-            for m in partial:
-                parts.append(f"- {m['requirement']}: {m.get('suggested_framing', '')}")
-        if gaps:
-            parts.append("## Gaps (Do NOT fabricate experience for these)\nThe candidate lacks direct experience here. Do NOT try to address these in bullet rewrites:")
-            for m in gaps:
-                parts.append(f"- {m['requirement']}")
-        if warnings:
-            parts.append("## Keyword Density Warnings\nThese keywords risk looking unnatural if overused:")
-            for w in warnings:
-                parts.append(f"- {w}")
-        gap_section = "\n".join(parts)
-
-    domain_section = _get_domain_guidance(jd_parsed.get("domain", ""))
-    system_prompt = SYSTEM_PROMPT.format(
-        domain_section=domain_section,
-        rules_section=rules_text,
-        gap_analysis_section=gap_section,
-    )
+    """Tailor experiences — one focused API call per bullet, all in parallel."""
     jd_summary = _build_jd_summary(jd_parsed)
-
     _client = get_openai_client()
     _settings = get_settings()
 
-    # One focused call per experience, all fired in parallel
     tailored = list(await asyncio.gather(*[
-        _tailor_one_experience(exp, system_prompt, jd_summary, gap_analysis, jd_parsed, _client, _settings)
+        _tailor_experience_bullets(exp, jd_summary, gap_analysis, jd_parsed, _client, _settings)
         for exp in experiences
     ]))
 
-    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that experience
-    for te in tailored:
-        if len(te.suggested_bullets) != len(te.original_bullets):
-            te.suggested_bullets = [
-                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
-                for b in te.original_bullets
-            ]
-
-    # Post-process: retry conservative/banned bullets; revert data-safety failures
-    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
-
-    # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
 
-    _clean_changes_made(tailored)
-
-    # Reorder bullets within each experience so the most JD-relevant comes first
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
 
@@ -1089,15 +972,13 @@ GOOD: "Spearheaded cross-functional team of 4 to deliver real-time data visualis
 """
 
 
-async def _tailor_one_project(
+async def _tailor_project_bullets(
     proj: dict,
-    system_prompt: str,
     jd_summary: str,
     jd_parsed: dict,
     client,
     settings,
 ) -> TailoredProject | None:
-    """Fire a focused API call for a single project's bullets. Returns None if no bullets."""
     bullets = extract_bullet_texts(proj.get("bullets", []))
     if not bullets:
         bullets = split_description_to_bullets(proj.get("description") or "")
@@ -1105,38 +986,21 @@ async def _tailor_one_project(
         return None
 
     proj_id = str(proj["id"])
-    name = proj.get("name") or "Unknown"
-    description = proj.get("description") or ""
     briefs = _build_bullet_briefs(bullets, None, jd_parsed)
 
-    user_message = (
-        f"Target Job Description:\n{jd_summary}\n\n"
-        f"Project to tailor:\n"
-        f"--- {name} (ID: {proj_id}) ---\n"
-    )
-    if description:
-        user_message += f"  Description: {description}\n"
-    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
-        user_message += f"  {i+1}. {bullet}\n{brief}\n"
-    user_message += _BULLET_PROCESS_STEPS + "\nReturn this project."
+    rewritten = list(await asyncio.gather(*[
+        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        for bullet, brief in zip(bullets, briefs)
+    ]))
 
-    response = await client.beta.chat.completions.parse(
-        model=settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorProjectsOutput,
-        temperature=settings.temp_tailoring,
-    )
-    results = response.choices[0].message.parsed.tailored_projects
-    if results:
-        return results[0]
-
+    suggested = [
+        TailoredBullet(text=t, has_placeholder="[X]" in t or "[x]" in t, outcome_type=_infer_outcome_type(t))
+        for t in rewritten
+    ]
+    changed = sum(1 for o, s in zip(bullets, suggested) if o != s.text)
     return TailoredProject(
-        project_id=proj_id, original_bullets=bullets,
-        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
-        changes_made=[], confidence=0.5,
+        project_id=proj_id, original_bullets=bullets, suggested_bullets=suggested,
+        changes_made=[], confidence=round(changed / len(bullets), 2) if bullets else 0.5,
     )
 
 
@@ -1145,25 +1009,15 @@ async def tailor_projects(
     jd_parsed: dict,
     rules_text: str = "",
 ) -> list[TailoredProject]:
-    """Tailor selected projects/leadership to match the JD using GPT-4o.
-
-    Fires one focused API call per project in parallel.
-    """
     if not projects:
         return []
 
-    domain_section = _get_domain_guidance(jd_parsed.get("domain", ""))
-    system_prompt = PROJECT_SYSTEM_PROMPT.format(
-        domain_section=domain_section,
-        rules_section=rules_text,
-    )
     jd_summary = _build_jd_summary(jd_parsed)
-
     _client = get_openai_client()
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_one_project(proj, system_prompt, jd_summary, jd_parsed, _client, _settings)
+        _tailor_project_bullets(proj, jd_summary, jd_parsed, _client, _settings)
         for proj in projects
     ])
     tailored = [r for r in results if r is not None]
@@ -1171,25 +1025,9 @@ async def tailor_projects(
     if not tailored:
         return []
 
-    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that project
-    for tp in tailored:
-        if len(tp.suggested_bullets) != len(tp.original_bullets):
-            tp.suggested_bullets = [
-                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
-                for b in tp.original_bullets
-            ]
-
-    # Post-process: retry conservative/banned bullets; revert data-safety failures
-    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
-
-    # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=105, trim_high=145)
-
-    _clean_changes_made(tailored)
-
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
-
     return tailored
 
 
@@ -1209,50 +1047,33 @@ class TailorActivitiesOutput(BaseModel):
     tailored_activities: list[TailoredActivity]
 
 
-async def _tailor_one_activity(
+async def _tailor_activity_bullets(
     act: dict,
-    system_prompt: str,
     jd_summary: str,
     jd_parsed: dict,
     client,
     settings,
 ) -> TailoredActivity | None:
-    """Fire a focused API call for a single activity's bullets. Returns None if no bullets."""
     bullets = extract_bullet_texts(act.get("bullets", []))
     if not bullets:
         return None
 
     act_id = str(act["id"])
-    org = act.get("organization") or "Unknown"
-    role = act.get("role_title") or ""
     briefs = _build_bullet_briefs(bullets, None, jd_parsed)
 
-    user_message = (
-        f"Target Job Description:\n{jd_summary}\n\n"
-        f"Activity to tailor:\n"
-        f"--- {role} at {org} (ID: {act_id}) ---\n"
-    )
-    for i, (bullet, brief) in enumerate(zip(bullets, briefs)):
-        user_message += f"  {i+1}. {bullet}\n{brief}\n"
-    user_message += _BULLET_PROCESS_STEPS + "\nReturn this activity."
+    rewritten = list(await asyncio.gather(*[
+        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        for bullet, brief in zip(bullets, briefs)
+    ]))
 
-    response = await client.beta.chat.completions.parse(
-        model=settings.model_name,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        response_format=TailorActivitiesOutput,
-        temperature=settings.temp_tailoring,
-    )
-    results = response.choices[0].message.parsed.tailored_activities
-    if results:
-        return results[0]
-
+    suggested = [
+        TailoredBullet(text=t, has_placeholder="[X]" in t or "[x]" in t, outcome_type=_infer_outcome_type(t))
+        for t in rewritten
+    ]
+    changed = sum(1 for o, s in zip(bullets, suggested) if o != s.text)
     return TailoredActivity(
-        activity_id=act_id, original_bullets=bullets,
-        suggested_bullets=[TailoredBullet(text=b, has_placeholder=False, outcome_type="process") for b in bullets],
-        changes_made=[], confidence=0.5,
+        activity_id=act_id, original_bullets=bullets, suggested_bullets=suggested,
+        changes_made=[], confidence=round(changed / len(bullets), 2) if bullets else 0.5,
     )
 
 
@@ -1261,25 +1082,15 @@ async def tailor_activities(
     jd_parsed: dict,
     rules_text: str = "",
 ) -> list[TailoredActivity]:
-    """Tailor selected activities (leadership/extracurricular) to match the JD using GPT-4o.
-
-    Fires one focused API call per activity in parallel.
-    """
     if not activities:
         return []
 
-    domain_section = _get_domain_guidance(jd_parsed.get("domain", ""))
-    system_prompt = PROJECT_SYSTEM_PROMPT.format(
-        domain_section=domain_section,
-        rules_section=rules_text,
-    )
     jd_summary = _build_jd_summary(jd_parsed)
-
     _client = get_openai_client()
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_one_activity(act, system_prompt, jd_summary, jd_parsed, _client, _settings)
+        _tailor_activity_bullets(act, jd_summary, jd_parsed, _client, _settings)
         for act in activities
     ])
     tailored = [r for r in results if r is not None]
@@ -1287,74 +1098,12 @@ async def tailor_activities(
     if not tailored:
         return []
 
-    # Enforce 1-to-1: if bullet count drifts, fall back to originals for that activity
-    for ta in tailored:
-        if len(ta.suggested_bullets) != len(ta.original_bullets):
-            ta.suggested_bullets = [
-                TailoredBullet(text=b, has_placeholder=False, outcome_type="process")
-                for b in ta.original_bullets
-            ]
-
-    # Post-process: retry conservative/banned bullets; revert data-safety failures
-    await _apply_retry_pass(tailored, jd_summary, _client, _settings)
-
-    # Enforce length by trimming just-over-line / expanding short / trimming long bullets
     await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
-
-    _clean_changes_made(tailored)
-
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
-
     return tailored
 
 
-_ORDINAL_WORDS = {0: "first", 1: "second", 2: "third", 3: "fourth", 4: "fifth", 5: "sixth"}
-
-
-def _clean_changes_made(entries: list) -> None:
-    """After reverting trivial changes, update changes_made to match reality.
-
-    Removes misleading change descriptions for bullets that were reverted to verbatim,
-    and adds accurate notes instead.
-    """
-    for entry in entries:
-        unchanged_indices: list[int] = []
-        for i, (orig, suggested) in enumerate(
-            zip(entry.original_bullets, entry.suggested_bullets)
-        ):
-            if orig.strip() == suggested.text.strip():
-                unchanged_indices.append(i)
-
-        if not unchanged_indices:
-            continue
-
-        if len(unchanged_indices) == len(entry.original_bullets):
-            entry.changes_made = [
-                "All bullets returned verbatim as they already match the JD well."
-            ]
-            continue
-
-        # Filter out misleading entries that reference reverted bullets
-        filtered: list[str] = []
-        for change in entry.changes_made:
-            change_lower = change.lower()
-            is_about_reverted = False
-            for idx in unchanged_indices:
-                ordinal = _ORDINAL_WORDS.get(idx, f"{idx + 1}th")
-                if ordinal in change_lower or f"bullet {idx + 1}" in change_lower:
-                    is_about_reverted = True
-                    break
-            if not is_about_reverted:
-                filtered.append(change)
-
-        for idx in unchanged_indices:
-            ordinal = _ORDINAL_WORDS.get(idx, f"{idx + 1}th")
-            filtered.append(
-                f"The {ordinal} bullet was returned verbatim as it already matches the JD well."
-            )
-
-        entry.changes_made = filtered
 
 
 def _similarity(a: str, b: str) -> float:
