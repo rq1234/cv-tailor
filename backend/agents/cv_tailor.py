@@ -813,54 +813,44 @@ def _build_bullet_briefs(
     weakness_map = {i: _bullet_weakness(b) for i, b in enumerate(bullets)}
     redundant_map = _find_redundant_pairs(bullets)
 
-    # Track which JD themes are already owned so redundant bullets get redirected
-    owned_themes: list[str] = []
-
     briefs = []
     for idx, bullet in enumerate(bullets):
         weakness = weakness_map.get(idx)
         redundant_of = redundant_map.get(idx)
 
-        # Prefix for weak/redundant bullets — escalates the mandate
+        # Prefix for weak/redundant bullets — escalates the rewrite mandate
         prefix = ""
         if weakness:
-            prefix = f"  ⚠ WEAK BULLET ({weakness}). REWRITE FROM SCRATCH — the original is context only, not a template.\n"
+            prefix = (
+                f"  ⚠ WEAK BULLET ({weakness}). REWRITE FROM SCRATCH — "
+                f"treat the original as raw notes, not a template. "
+                f"Write a strong, achievement-oriented bullet that leads with what the JD values.\n"
+            )
         if redundant_of is not None:
             prefix = (
-                f"  ⚠ REDUNDANT with bullet #{redundant_of + 1} above. Do NOT repeat that theme. "
-                f"REWRITE this bullet to cover a completely different JD requirement.\n"
+                f"  ⚠ REDUNDANT with bullet #{redundant_of + 1} above (covers the same ground). "
+                f"REWRITE to cover a completely different JD requirement — "
+                f"do NOT repeat the same theme or skill.\n"
             )
 
-        # Keywords covered by SIBLING bullets only
+        # Keywords covered by SIBLING bullets only — avoid repeating them
         sibling_covered = [
             kw for kw in priority_keywords
             if not _keyword_in_text(kw, bullet)
             and any(_keyword_in_text(kw, b) for j, b in enumerate(bullets) if j != idx)
         ][:4]
         sibling_note = (
-            f" (Sibling bullets cover: {', '.join(sibling_covered)} — no need to repeat.)"
+            f" (Sibling bullets already cover: {', '.join(sibling_covered)} — don't repeat.)"
             if sibling_covered else ""
         )
-
-        # For redundant bullets, steer toward a theme not yet owned
-        if redundant_of is not None:
-            unowned = [kw for kw in priority_keywords if kw not in owned_themes][:3]
-            theme_directive = (
-                f"Assign this bullet to: {', '.join(unowned)}." if unowned
-                else "Find any JD theme not yet covered by the other bullets."
-            )
-            briefs.append(f"{prefix}  → Tailoring brief: {theme_directive}{sibling_note}")
-            if unowned:
-                owned_themes.extend(unowned[:1])
-            continue
 
         # Use gap analysis framings if available (highest quality)
         if bullet in bullet_to_framings:
             themes = bullet_to_framings[bullet]
-            owned_themes.extend(themes[:1])
-            action = "REWRITE to lead with" if weakness else "Reframe to surface"
+            action = "REWRITE to naturally lead with" if weakness else "Reframe to surface"
             briefs.append(
-                f"{prefix}  → Tailoring brief: {action} these JD themes: {'; '.join(themes)}.{sibling_note}"
+                f"{prefix}  → Tailoring brief: {action} these JD themes: {'; '.join(themes)}."
+                f" Embed the theme into the action — do NOT append it as a trailing phrase.{sibling_note}"
             )
         else:
             assigned_missing = keyword_assignment.get(idx, [])
@@ -868,26 +858,31 @@ def _build_bullet_briefs(
                 kw for kw in priority_keywords if _keyword_in_text(kw, bullet)
             ][:2]
             if assigned_missing:
-                owned_themes.extend(assigned_missing[:1])
                 present_note = (
-                    f" (Also keep: {', '.join(present_keywords)}.)" if present_keywords else ""
+                    f" (Keep present: {', '.join(present_keywords)}.)" if present_keywords else ""
                 )
-                action = "REWRITE from scratch, leading with" if weakness else "RESTRUCTURE to lead with"
+                action = "REWRITE from scratch so the bullet naturally centres on" if weakness else "RESTRUCTURE to lead with"
                 briefs.append(
                     f"{prefix}  → Tailoring brief: {action}: {', '.join(assigned_missing)}."
-                    f" Embed this as the core of what was done, not an appended label.{present_note}{sibling_note}"
+                    f" This must be woven into the action itself — not added as a suffix.{present_note}{sibling_note}"
                 )
             elif present_keywords:
-                owned_themes.extend(present_keywords[:1])
                 action = "REWRITE so" if weakness else "REFRAME so"
                 briefs.append(
-                    f"{prefix}  → Tailoring brief: {action} '{present_keywords[0]}' is the first concept the reader sees.{sibling_note}"
+                    f"{prefix}  → Tailoring brief: {action} '{present_keywords[0]}' leads the sentence — "
+                    f"it should be the first concept the reader sees.{sibling_note}"
                 )
             else:
-                action = "REWRITE from scratch to surface" if weakness else "Identify and surface"
-                briefs.append(
-                    f"{prefix}  → Tailoring brief: {action} the closest JD Key Responsibility theme.{sibling_note} Only leave unchanged if genuinely unrelated to every JD theme."
-                )
+                if weakness:
+                    briefs.append(
+                        f"{prefix}  → Tailoring brief: Rewrite as a strong achievement bullet. "
+                        f"Identify the closest JD theme and lead with it.{sibling_note}"
+                    )
+                else:
+                    briefs.append(
+                        f"  → Tailoring brief: Identify the closest JD Key Responsibility theme and reframe the opening to surface it.{sibling_note} "
+                        f"Only leave unchanged if genuinely unrelated to every JD theme."
+                    )
     return briefs
 
 

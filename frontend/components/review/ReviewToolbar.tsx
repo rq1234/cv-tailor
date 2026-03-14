@@ -5,7 +5,6 @@ import Link from "next/link";
 import { useClickOutside } from "@/hooks/useClickOutside";
 import {
   ArrowLeft,
-  CheckCheck,
   X,
   RefreshCw,
   RotateCcw,
@@ -13,8 +12,6 @@ import {
   ChevronDown,
   ExternalLink,
   FileText,
-  Zap,
-  HelpCircle,
 } from "lucide-react";
 
 interface Counts {
@@ -47,6 +44,7 @@ interface ReviewToolbarProps {
   onDownloadLatex: () => void;
   onDismissRecovered: () => void;
 }
+// onAcceptAll, onSmartAccept, onRejectAll kept in props for hook compatibility but not shown in UI
 
 export default function ReviewToolbar({
   companyName,
@@ -72,14 +70,11 @@ export default function ReviewToolbar({
 }: ReviewToolbarProps) {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const [resetMenuOpen, setResetMenuOpen] = useState(false);
-  const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
   const resetMenuRef = useRef<HTMLDivElement>(null);
-  const shortcutsRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(exportMenuRef, () => setExportMenuOpen(false));
   useClickOutside(resetMenuRef, () => setResetMenuOpen(false));
-  useClickOutside(shortcutsRef, () => setShortcutsOpen(false));
 
   return (
     <div className="space-y-3">
@@ -109,65 +104,14 @@ export default function ReviewToolbar({
           </p>
         </div>
 
-        {/* Action buttons — two groups */}
+        {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
-          {/* Group A: Review actions */}
           <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
-            {onSmartAccept && (
-              <>
-                <button
-                  onClick={onSmartAccept}
-                  title="Accept bullets where AI confidence ≥ 80%"
-                  className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-                >
-                  <Zap className="h-3.5 w-3.5" /> Smart Accept
-                </button>
-                <div className="h-4 w-px bg-slate-200" />
-              </>
-            )}
-            <button
-              onClick={onAcceptAll}
-              title="Accept All"
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-emerald-50 hover:text-emerald-700 transition-colors"
-            >
-              <CheckCheck className="h-3.5 w-3.5" /> Accept All
-            </button>
-            <div className="h-4 w-px bg-slate-200" />
-            <button
-              onClick={onRejectAll}
-              title="Reject All"
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-red-50 hover:text-red-600 transition-colors"
-            >
-              <X className="h-3.5 w-3.5" /> Reject All
-            </button>
-            <div className="h-4 w-px bg-slate-200" />
-            {/* Keyboard shortcuts hint */}
-            <div className="relative" ref={shortcutsRef}>
-              <button
-                onClick={() => setShortcutsOpen((o) => !o)}
-                className="inline-flex items-center rounded-md px-1.5 py-1.5 text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors"
-                title="Keyboard shortcuts"
-              >
-                <HelpCircle className="h-3.5 w-3.5" />
-              </button>
-              {shortcutsOpen && (
-                <div className="absolute left-0 top-full mt-1 z-20 w-52 rounded-lg border bg-white shadow-lg p-3 text-xs text-slate-600 space-y-1">
-                  <p className="font-semibold text-slate-700 mb-1.5">Keyboard shortcuts</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">Tab</kbd> / <kbd className="rounded bg-slate-100 px-1 font-mono">↓</kbd> Next bullet</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">Shift+Tab</kbd> / <kbd className="rounded bg-slate-100 px-1 font-mono">↑</kbd> Prev bullet</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">A</kbd> Accept</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">R</kbd> Reject</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">E</kbd> Edit</p>
-                  <p><kbd className="rounded bg-slate-100 px-1 font-mono">Esc</kbd> Clear focus</p>
-                </div>
-              )}
-            </div>
-            <div className="h-4 w-px bg-slate-200" />
             {/* Reset dropdown */}
             <div className="relative" ref={resetMenuRef}>
               <button
                 onClick={() => setResetMenuOpen((o) => !o)}
-                className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors"
+                className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors"
               >
                 <RotateCcw className="h-3.5 w-3.5" /> Reset <ChevronDown className="h-3 w-3 opacity-60" />
               </button>
@@ -188,10 +132,7 @@ export default function ReviewToolbar({
                 </div>
               )}
             </div>
-          </div>
-
-          {/* Group B: Export actions */}
-          <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
+            <div className="h-4 w-px bg-slate-200" />
             <button
               onClick={onReTailor}
               disabled={retailoring}
