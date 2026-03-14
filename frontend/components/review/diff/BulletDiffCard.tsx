@@ -3,7 +3,6 @@ import {
   type BulletState,
   type ExperienceDiff,
   bulletHasPlaceholder,
-  bulletOutcomeType,
   bulletText,
 } from "../types";
 
@@ -75,7 +74,6 @@ export function BulletDiffCard({
 
   const text = bulletText(suggested);
   const hasPlaceholder = bulletHasPlaceholder(suggested);
-  const outcomeType = bulletOutcomeType(suggested);
   const isEditing = bulletState?.decision === "edit";
   const displayText = bulletState?.editedText ? bulletState.editedText : text;
   const isChanged = original !== displayText;
@@ -146,11 +144,6 @@ export function BulletDiffCard({
             {hasPlaceholder && (
               <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
                 Fill in [X]
-              </span>
-            )}
-            {outcomeType && outcomeType !== "process" && (
-              <span className="inline-flex items-center rounded-full bg-purple-50 px-1.5 py-0.5 text-[10px] text-purple-600">
-                {outcomeType}
               </span>
             )}
           </div>

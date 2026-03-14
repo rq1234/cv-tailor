@@ -100,27 +100,6 @@ export default function UploadPage() {
       <OnboardingBanner />
       <h1 className="text-2xl font-bold">Upload CV</h1>
 
-      {/* Onboarding steps — shown before any upload */}
-      {!result && !uploading && (
-        <div className="grid gap-3 sm:grid-cols-3">
-          {[
-            { n: "1", title: "Upload your CV", body: "Drop your PDF here. We extract every role, project, skill, and degree." },
-            { n: "2", title: "Paste a job description", body: "On the next screen, enter the company and role. AI picks your best matching experience." },
-            { n: "3", title: "Export to Overleaf", body: "Accept or edit suggestions, then send the final LaTeX straight to Overleaf." },
-          ].map((s) => (
-            <div key={s.n} className="flex gap-3 rounded-lg border bg-white p-4 shadow-sm">
-              <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary text-xs font-bold text-primary-foreground">
-                {s.n}
-              </div>
-              <div>
-                <p className="text-sm font-medium">{s.title}</p>
-                <p className="mt-0.5 text-xs text-muted-foreground">{s.body}</p>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
       {!result && !uploading && (
         <>
           <CVDropzone onFileSelected={handleFileSelected} />

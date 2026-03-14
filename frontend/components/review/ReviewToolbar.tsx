@@ -30,9 +30,6 @@ interface ReviewToolbarProps {
   saving: boolean;
   retailoring: boolean;
   showRetailorConfirm: boolean;
-  onAcceptAll: () => void;
-  onSmartAccept?: () => void;
-  onRejectAll: () => void;
   onReTailor: () => void;
   onConfirmReTailor: () => void;
   onCancelReTailor: () => void;
@@ -44,7 +41,6 @@ interface ReviewToolbarProps {
   onDownloadLatex: () => void;
   onDismissRecovered: () => void;
 }
-// onAcceptAll, onSmartAccept, onRejectAll kept in props for hook compatibility but not shown in UI
 
 export default function ReviewToolbar({
   companyName,
@@ -54,9 +50,6 @@ export default function ReviewToolbar({
   saving,
   retailoring,
   showRetailorConfirm,
-  onAcceptAll,
-  onSmartAccept,
-  onRejectAll,
   onReTailor,
   onConfirmReTailor,
   onCancelReTailor,

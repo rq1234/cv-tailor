@@ -100,16 +100,10 @@ export function ExperienceDiffSection({
 
       {entries.map(([entryId, diff]) => {
         const meta = getDiffMeta(entryId, diff, result);
-        const borderColour =
-          diff.confidence >= 0.85
-            ? "border-green-200"
-            : diff.confidence < 0.7
-            ? "border-amber-200"
-            : "border-gray-200";
         const isCollapsed = collapsed.has(entryId);
 
         return (
-          <div key={entryId} className={`rounded-lg border mb-4 ${borderColour}`}>
+          <div key={entryId} className="rounded-lg border mb-4 border-gray-200">
             {/* Card header */}
             <div
               className="border-b bg-muted/50 px-4 py-3 cursor-pointer select-none"
@@ -134,34 +128,12 @@ export function ExperienceDiffSection({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-3 flex-shrink-0 ml-2">
-                  {isCollapsed && (
-                    <span className="text-xs text-muted-foreground">
-                      {getBulletSummary(decisions[entryId], diff.suggested_bullets.length)}
-                    </span>
-                  )}
-                  <span className="text-xs text-muted-foreground">
-                    {(diff.confidence * 100).toFixed(0)}%
+                {isCollapsed && (
+                  <span className="text-xs text-muted-foreground flex-shrink-0 ml-2">
+                    {getBulletSummary(decisions[entryId], diff.suggested_bullets.length)}
                   </span>
-                </div>
+                )}
               </div>
-              {!isCollapsed && diff.coaching_note && (
-                <p className="mt-1.5 text-xs text-muted-foreground italic">
-                  💡 {diff.coaching_note}
-                </p>
-              )}
-              {!isCollapsed && diff.changes_made.length > 0 && (
-                <div className="mt-1 flex flex-wrap gap-1">
-                  {diff.changes_made.map((change, i) => (
-                    <span
-                      key={i}
-                      className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700"
-                    >
-                      {change}
-                    </span>
-                  ))}
-                </div>
-              )}
             </div>
 
             {/* Bullet list */}

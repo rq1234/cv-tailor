@@ -84,16 +84,10 @@ async def _tailor_one_bullet(
     JD requirement. Falls back to original if the result fails quality checks.
     """
     prompt = (
-        f"Rewrite this CV bullet to better match the target job.\n\n"
-        f"Original bullet:\n{original}\n\n"
-        f"Job description:\n{jd_summary}\n\n"
-        f"What to focus on for this bullet:\n{brief.strip()}\n\n"
-        f"Rules:\n"
-        f"- Keep every fact, number, and technology name from the original\n"
-        f"- Restructure the sentence — do not just swap synonyms\n"
-        f"- Lead with the most relevant aspect for this job\n"
-        f"- Embed JD themes into the action itself, never as appended phrases like 'showcasing X' or 'demonstrating Y'\n"
-        f"- Output ONLY the rewritten bullet text, nothing else"
+        f"Job: {jd_summary}\n\n"
+        f"CV bullet: {original}\n\n"
+        f"Make this bullet more relevant to: {brief.strip()}\n\n"
+        f"Keep all facts, numbers, and tech. Output only the bullet."
     )
 
     try:
