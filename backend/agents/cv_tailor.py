@@ -732,6 +732,43 @@ def _assign_keywords_to_bullets(
     return assignment
 
 
+_WEAK_STARTS = (
+    "responsible for", "worked on", "assisted with", "assisted in",
+    "helped with", "helped to", "participated in", "involved in",
+    "contributed to", "supported the", "was part of", "tasked with",
+    "duties included", "role involved",
+)
+
+_WEAK_VERBS = {"assist", "help", "support", "participate", "contribute", "involve"}
+
+
+def _bullet_weakness(bullet: str) -> str | None:
+    """Return a one-line weakness description, or None if the bullet is OK."""
+    b = bullet.lower().strip()
+    if len(bullet.strip()) < 60:
+        return "too short / vague"
+    if any(b.startswith(w) for w in _WEAK_STARTS):
+        first = b.split()[0]
+        return f"opens with passive/weak phrase ('{first}...')"
+    first_word = b.split()[0].rstrip("eding")  # rough stem
+    if first_word in _WEAK_VERBS:
+        return f"weak opening verb ('{b.split()[0]}')"
+    return None
+
+
+def _find_redundant_pairs(bullets: list[str]) -> dict[int, int]:
+    """Return {idx: duplicate_of_idx} for bullets that heavily overlap a preceding one."""
+    redundant: dict[int, int] = {}
+    for i in range(1, len(bullets)):
+        for j in range(i):
+            if j in redundant:
+                continue  # don't chain off already-redundant bullets
+            if _similarity(bullets[i].lower(), bullets[j].lower()) > 0.52:
+                redundant[i] = j
+                break
+    return redundant
+
+
 def _build_bullet_briefs(
     bullets: list[str],
     gap_analysis: dict | None,
@@ -739,10 +776,9 @@ def _build_bullet_briefs(
 ) -> list[str]:
     """For each bullet, build a short tailoring brief: which JD themes to surface.
 
-    Uses gap analysis mappings (evidence + suggested_framing) when available,
-    otherwise assigns each missing JD keyword to the top-2 best-fitting bullets
-    so relevant keywords can appear across multiple bullets while avoiding
-    broadcasting the same keyword to every bullet (keyword stuffing).
+    Detects weak bullets and redundant pairs so the model gets explicit strategic
+    direction rather than a gentle nudge — weak/redundant bullets get a full rewrite
+    mandate, not just a reframe instruction.
     """
     # Priority-ordered keywords: required skills first, then general keywords
     priority_keywords = (
@@ -773,10 +809,29 @@ def _build_bullet_briefs(
     # Pre-assign missing keywords to best-fit bullets
     keyword_assignment = _assign_keywords_to_bullets(bullets, priority_keywords[:12])
 
+    # Detect quality issues up front so briefs can reflect them
+    weakness_map = {i: _bullet_weakness(b) for i, b in enumerate(bullets)}
+    redundant_map = _find_redundant_pairs(bullets)
+
+    # Track which JD themes are already owned so redundant bullets get redirected
+    owned_themes: list[str] = []
+
     briefs = []
     for idx, bullet in enumerate(bullets):
-        # Keywords covered by SIBLING bullets only (not this bullet) — tell the
-        # model these themes are already handled elsewhere so it doesn't repeat them.
+        weakness = weakness_map.get(idx)
+        redundant_of = redundant_map.get(idx)
+
+        # Prefix for weak/redundant bullets — escalates the mandate
+        prefix = ""
+        if weakness:
+            prefix = f"  ⚠ WEAK BULLET ({weakness}). REWRITE FROM SCRATCH — the original is context only, not a template.\n"
+        if redundant_of is not None:
+            prefix = (
+                f"  ⚠ REDUNDANT with bullet #{redundant_of + 1} above. Do NOT repeat that theme. "
+                f"REWRITE this bullet to cover a completely different JD requirement.\n"
+            )
+
+        # Keywords covered by SIBLING bullets only
         sibling_covered = [
             kw for kw in priority_keywords
             if not _keyword_in_text(kw, bullet)
@@ -787,11 +842,25 @@ def _build_bullet_briefs(
             if sibling_covered else ""
         )
 
+        # For redundant bullets, steer toward a theme not yet owned
+        if redundant_of is not None:
+            unowned = [kw for kw in priority_keywords if kw not in owned_themes][:3]
+            theme_directive = (
+                f"Assign this bullet to: {', '.join(unowned)}." if unowned
+                else "Find any JD theme not yet covered by the other bullets."
+            )
+            briefs.append(f"{prefix}  → Tailoring brief: {theme_directive}{sibling_note}")
+            if unowned:
+                owned_themes.extend(unowned[:1])
+            continue
+
         # Use gap analysis framings if available (highest quality)
         if bullet in bullet_to_framings:
             themes = bullet_to_framings[bullet]
+            owned_themes.extend(themes[:1])
+            action = "REWRITE to lead with" if weakness else "Reframe to surface"
             briefs.append(
-                f"  → Tailoring brief: Reframe to surface these JD themes: {'; '.join(themes)}.{sibling_note}"
+                f"{prefix}  → Tailoring brief: {action} these JD themes: {'; '.join(themes)}.{sibling_note}"
             )
         else:
             assigned_missing = keyword_assignment.get(idx, [])
@@ -799,21 +868,25 @@ def _build_bullet_briefs(
                 kw for kw in priority_keywords if _keyword_in_text(kw, bullet)
             ][:2]
             if assigned_missing:
+                owned_themes.extend(assigned_missing[:1])
                 present_note = (
-                    f" (Already present: {', '.join(present_keywords)} — keep them.)" if present_keywords else ""
+                    f" (Also keep: {', '.join(present_keywords)}.)" if present_keywords else ""
                 )
+                action = "REWRITE from scratch, leading with" if weakness else "RESTRUCTURE to lead with"
                 briefs.append(
-                    f"  → Tailoring brief: RESTRUCTURE this bullet to lead with: {', '.join(assigned_missing)}."
-                    f" Move this theme to the opening clause. Add it as context or outcome if it fits the work.{present_note}{sibling_note}"
+                    f"{prefix}  → Tailoring brief: {action}: {', '.join(assigned_missing)}."
+                    f" Embed this as the core of what was done, not an appended label.{present_note}{sibling_note}"
                 )
             elif present_keywords:
+                owned_themes.extend(present_keywords[:1])
+                action = "REWRITE so" if weakness else "REFRAME so"
                 briefs.append(
-                    f"  → Tailoring brief: Bullet covers {', '.join(present_keywords[:3])} but may bury it. "
-                    f"REFRAME the opening so '{present_keywords[0]}' is the first concept the reader sees.{sibling_note}"
+                    f"{prefix}  → Tailoring brief: {action} '{present_keywords[0]}' is the first concept the reader sees.{sibling_note}"
                 )
             else:
+                action = "REWRITE from scratch to surface" if weakness else "Identify and surface"
                 briefs.append(
-                    f"  → Tailoring brief: No direct JD keyword match. Identify the closest Key Responsibility theme above and reframe the opening to surface it.{sibling_note} Only leave unchanged if genuinely unrelated to every JD theme."
+                    f"{prefix}  → Tailoring brief: {action} the closest JD Key Responsibility theme.{sibling_note} Only leave unchanged if genuinely unrelated to every JD theme."
                 )
     return briefs
 
