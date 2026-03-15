@@ -85,7 +85,6 @@ export function BulletDiffCard({
   const isEditing = bulletState?.decision === "edit";
   const isAccepted = bulletState?.decision === "accept";
   const isRejected = bulletState?.decision === "reject";
-  const isPending = !bulletState || bulletState.decision === "pending";
   const displayText = bulletState?.editedText ? bulletState.editedText : text;
   const isChanged = original !== displayText;
   // AI returned the original unchanged — quality checks rejected the rewrite
@@ -110,16 +109,6 @@ export function BulletDiffCard({
     setSwipeFlash(direction);
     setTimeout(() => setSwipeFlash(null), 400);
     try { localStorage.setItem(SWIPE_HINT_KEY, "1"); } catch { /* ignore */ }
-  };
-
-  const handleRegenerate = () => {
-    if (showHint) {
-      onRegenerateBullet?.(entryId, idx, hintInput.trim() || undefined);
-      setHintInput("");
-      setShowHint(false);
-    } else {
-      setShowHint(true);
-    }
   };
 
   // Outer flash overlay

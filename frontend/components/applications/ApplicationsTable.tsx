@@ -132,7 +132,7 @@ export default function ApplicationsTable({
                   </td>
                   <td className="px-4 py-3">
                     <OutcomeDropdown
-                      value={app.outcome}
+                      value={app.outcome as OutcomeValue | null}
                       appId={app.id}
                       disabled={savingOutcomeId === app.id}
                       variant="table"

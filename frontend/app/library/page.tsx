@@ -267,7 +267,7 @@ export default function LibraryPage() {
                         )}
                         <button
                           onClick={() => {
-                            const existing = (edu as any).achievements ?? [];
+                            const existing = (edu as { achievements?: string[] }).achievements ?? [];
                             setEduAchievements(existing.join("\n"));
                             setEditingEduId(edu.id);
                           }}

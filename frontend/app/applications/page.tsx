@@ -10,7 +10,7 @@ import CoverLetterModal from "@/components/applications/CoverLetterModal";
 import ApplicationCard from "@/components/applications/ApplicationCard";
 import ApplicationsTable from "@/components/applications/ApplicationsTable";
 import ApplicationKanban from "@/components/applications/ApplicationKanban";
-import { SkeletonCard, ErrorBanner } from "@/components/ui/Skeleton";
+import { SkeletonCard } from "@/components/ui/Skeleton";
 import { LayoutGrid, List } from "lucide-react";
 
 export default function ApplicationsPage() {

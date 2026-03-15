@@ -142,7 +142,7 @@ export default function ApplicationCard({
         {/* Outcome + date row */}
         <div className="flex items-center gap-2">
           <OutcomeDropdown
-            value={app.outcome}
+            value={app.outcome as OutcomeValue | null}
             appId={app.id}
             disabled={savingOutcomeId === app.id}
             variant="card"

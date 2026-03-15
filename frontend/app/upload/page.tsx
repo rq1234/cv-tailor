@@ -7,7 +7,7 @@ import { api } from "@/lib/api";
 import { parseSummarySchema, type ParseSummary, type ReviewItem, type UnclassifiedBlock } from "@/lib/schemas";
 import { useAppStore } from "@/store/appStore";
 import { OnboardingBanner } from "@/components/onboarding/OnboardingBanner";
-import { Spinner, ErrorBanner } from "@/components/ui/Skeleton";
+import { Spinner } from "@/components/ui/Skeleton";
 
 const CATEGORY_TO_API: Record<string, string> = {
   "Work Experience": "work_experience",

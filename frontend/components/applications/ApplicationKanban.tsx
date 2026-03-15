@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { OUTCOME_OPTIONS, type Application } from "@/lib/schemas";
+import { type Application } from "@/lib/schemas";
 import { STATUS_LABEL } from "@/lib/constants";
 
 const KANBAN_COLUMNS: { key: string | null; label: string; headerClass: string }[] = [
