@@ -64,7 +64,7 @@ export default function ApplicationsTable({
   };
 
   return (
-    <div ref={tableRef} className="overflow-hidden rounded-xl border bg-white shadow-sm">
+    <div ref={tableRef} className="rounded-xl border bg-card shadow-sm">
       <table className="w-full text-sm">
         <thead className="border-b bg-muted/50">
           <tr>
