@@ -222,7 +222,14 @@ export default function ReviewToolbar({
       {/* Re-tailor confirmation */}
       {showRetailorConfirm && (
         <div className="flex items-center gap-4 rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-          <span className="flex-1">Re-tailor this application? This will apply the latest tailoring logic and clear your current decisions.</span>
+          <span className="flex-1">
+            Re-tailor this application? The AI will regenerate all bullet suggestions.
+            {counts.edited > 0 && (
+              <span className="block mt-0.5 text-xs font-medium text-amber-700">
+                Your {counts.edited} manual edit{counts.edited !== 1 ? "s" : ""} will be replaced by new suggestions.
+              </span>
+            )}
+          </span>
           <button
             onClick={onConfirmReTailor}
             className="shrink-0 rounded-md bg-amber-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-amber-700 transition-colors"

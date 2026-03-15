@@ -204,21 +204,29 @@ export default function ReviewPage() {
 
       {/* All done CTA — shown when every bullet has a decision */}
       {counts.total > 0 && counts.pending === 0 && (
-        <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3">
+        <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 gap-3 flex-wrap">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
             <span className="text-sm font-medium text-emerald-800">
               All {counts.total} bullets reviewed — ready to export
             </span>
           </div>
-          <button
-            onClick={handleDownloadPdf}
-            disabled={saving}
-            className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 shrink-0"
-          >
-            <Download className="h-3.5 w-3.5" />
-            {saving ? "Exporting…" : "Download PDF"}
-          </button>
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={handleDownloadPdf}
+              disabled={saving}
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+            >
+              <Download className="h-3.5 w-3.5" />
+              {saving ? "Exporting…" : "Download PDF"}
+            </button>
+            <a
+              href="/apply"
+              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+            >
+              New application →
+            </a>
+          </div>
         </div>
       )}
 

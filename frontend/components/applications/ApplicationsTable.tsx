@@ -39,6 +39,7 @@ export default function ApplicationsTable({
   const [editingNotesId, setEditingNotesId] = useState<string | null>(null);
   const [notesText, setNotesText] = useState("");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Close overflow menus on outside click
@@ -51,9 +52,12 @@ export default function ApplicationsTable({
 
   const handleSaveNotes = async (appId: string) => {
     setSavingNotes(true);
+    setNotesError(null);
     try {
       await onSaveNotes(appId, notesText);
       setEditingNotesId(null);
+    } catch {
+      setNotesError("Failed to save — please try again.");
     } finally {
       setSavingNotes(false);
     }
@@ -239,16 +243,21 @@ export default function ApplicationsTable({
                           placeholder="Add notes about this application…"
                           className="flex-1 rounded border px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
                         />
-                        <button
-                          onClick={() => handleSaveNotes(app.id)}
-                          disabled={savingNotes}
-                          className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50 shrink-0"
-                        >
-                          {savingNotes ? "Saving…" : "Save"}
-                        </button>
-                        <button onClick={() => setEditingNotesId(null)} className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted shrink-0">
-                          Cancel
-                        </button>
+                        <div className="flex flex-col gap-1 shrink-0">
+                          <div className="flex gap-1">
+                            <button
+                              onClick={() => handleSaveNotes(app.id)}
+                              disabled={savingNotes}
+                              className="rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                            >
+                              {savingNotes ? "Saving…" : "Save"}
+                            </button>
+                            <button onClick={() => { setEditingNotesId(null); setNotesError(null); }} className="rounded-md border px-3 py-1.5 text-xs hover:bg-muted">
+                              Cancel
+                            </button>
+                          </div>
+                          {notesError && <p className="text-[10px] text-red-600">{notesError}</p>}
+                        </div>
                       </div>
                     </td>
                   </tr>

@@ -3,12 +3,14 @@ import { OUTCOME_OPTIONS, type Application } from "@/lib/schemas";
 import { STATUS_LABEL } from "@/lib/constants";
 
 const KANBAN_COLUMNS: { key: string | null; label: string; headerClass: string }[] = [
-  { key: null,         label: "Untracked",   headerClass: "border-slate-200 bg-slate-50 text-slate-600" },
-  { key: "applied",    label: "Applied",     headerClass: "border-blue-200 bg-blue-50 text-blue-700" },
-  { key: "interview",  label: "Interviewing", headerClass: "border-purple-200 bg-purple-50 text-purple-700" },
-  { key: "offer",      label: "Offer",       headerClass: "border-emerald-200 bg-emerald-50 text-emerald-700" },
-  { key: "rejected",   label: "Rejected",    headerClass: "border-red-200 bg-red-50 text-red-600" },
-  { key: "withdrawn",  label: "Withdrawn",   headerClass: "border-gray-200 bg-gray-50 text-gray-600" },
+  { key: null,              label: "Untracked",      headerClass: "border-slate-200 bg-slate-50 text-slate-600" },
+  { key: "applied",         label: "Applied",        headerClass: "border-blue-200 bg-blue-50 text-blue-700" },
+  { key: "phone_screen",    label: "Phone Screen",   headerClass: "border-sky-200 bg-sky-50 text-sky-700" },
+  { key: "first_interview", label: "1st Interview",  headerClass: "border-indigo-200 bg-indigo-50 text-indigo-700" },
+  { key: "final_interview", label: "Final Interview",headerClass: "border-purple-200 bg-purple-50 text-purple-700" },
+  { key: "offer",           label: "Offer",          headerClass: "border-emerald-200 bg-emerald-50 text-emerald-700" },
+  { key: "rejected",        label: "Rejected",       headerClass: "border-red-200 bg-red-50 text-red-600" },
+  { key: "withdrawn",       label: "Withdrawn",      headerClass: "border-gray-200 bg-gray-50 text-gray-600" },
 ];
 
 interface ApplicationKanbanProps {
@@ -24,19 +26,22 @@ export default function ApplicationKanban({ applications }: ApplicationKanbanPro
     else grouped.get(null)!.push(app);
   }
 
-  // Only render columns that have apps, except we always show Applied, Interviewing, Offer
-  const ALWAYS_SHOW = new Set(["applied", "interview", "offer"]);
+  // Only render columns that have apps, except we always show Applied, 1st Interview, Offer
+  const ALWAYS_SHOW = new Set(["applied", "first_interview", "offer"]);
   const visibleColumns = KANBAN_COLUMNS.filter(
     (col) => ALWAYS_SHOW.has(col.key ?? "") || (grouped.get(col.key)?.length ?? 0) > 0
   );
 
   return (
-    <div className="overflow-x-auto pb-4">
+    <div className="relative">
+      {/* Fade gradient — visible when content overflows on the right */}
+      <div className="pointer-events-none absolute right-0 top-0 bottom-4 w-12 bg-gradient-to-l from-background to-transparent z-10 md:hidden" />
+      <div className="overflow-x-auto pb-4 scroll-smooth snap-x snap-mandatory md:snap-none">
       <div className="flex gap-4" style={{ minWidth: `${visibleColumns.length * 240}px` }}>
         {visibleColumns.map((col) => {
           const colApps = grouped.get(col.key) ?? [];
           return (
-            <div key={String(col.key)} className="flex-1 min-w-[220px] max-w-xs flex flex-col gap-2">
+            <div key={String(col.key)} className="flex-1 min-w-[220px] max-w-xs flex flex-col gap-2 snap-start">
               {/* Column header */}
               <div className={`flex items-center justify-between rounded-lg border px-3 py-2 ${col.headerClass}`}>
                 <span className="text-xs font-semibold">{col.label}</span>
@@ -88,6 +93,7 @@ export default function ApplicationKanban({ applications }: ApplicationKanbanPro
             </div>
           );
         })}
+      </div>
       </div>
     </div>
   );

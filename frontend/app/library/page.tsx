@@ -47,6 +47,9 @@ export default function LibraryPage() {
   const [expandedGroups, setExpandedGroups] = useState<Set<string>>(new Set());
   const [opError, setOpError] = useState<string | null>(null);
   const [search, setSearch] = useState("");
+  const [editingEduId, setEditingEduId] = useState<string | null>(null);
+  const [eduAchievements, setEduAchievements] = useState<string>("");
+  const [savingEdu, setSavingEdu] = useState(false);
 
   const toggleGroup = (id: string) => {
     setExpandedGroups((prev) => {
@@ -80,6 +83,21 @@ export default function LibraryPage() {
       setOpError(err instanceof Error ? err.message : "Failed to delete item");
     } finally {
       setDeleting(null);
+    }
+  };
+
+  const handleSaveEduAchievements = async (id: string) => {
+    setSavingEdu(true);
+    setOpError(null);
+    try {
+      const achievements = eduAchievements.split("\n").map((s) => s.trim()).filter(Boolean);
+      await api.put(`/api/experiences/education/${id}`, { achievements });
+      await fetchPool();
+      setEditingEduId(null);
+    } catch (err) {
+      setOpError(err instanceof Error ? err.message : "Failed to save achievements");
+    } finally {
+      setSavingEdu(false);
     }
   };
 
@@ -242,6 +260,17 @@ export default function LibraryPage() {
                           </button>
                         )}
                         <button
+                          onClick={() => {
+                            const existing = (edu as any).achievements ?? [];
+                            setEduAchievements(existing.join("\n"));
+                            setEditingEduId(edu.id);
+                          }}
+                          className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs text-slate-500 hover:bg-slate-100 hover:text-slate-700"
+                          title="Edit achievements"
+                        >
+                          Edit
+                        </button>
+                        <button
                           onClick={() => handleDelete("/api/experiences/education", edu.id)}
                           disabled={deleting === edu.id}
                           className="inline-flex items-center rounded-full px-1.5 py-0.5 text-xs text-red-500 hover:bg-red-50 hover:text-red-700 disabled:opacity-50"
@@ -254,6 +283,33 @@ export default function LibraryPage() {
                     <p className="mt-1 text-xs text-muted-foreground">
                       {edu.date_start || "?"} - {edu.date_end || "?"}
                     </p>
+                    {editingEduId === edu.id && (
+                      <div className="mt-3 border-t pt-3 space-y-2">
+                        <p className="text-xs font-medium text-slate-600">Achievements (one per line)</p>
+                        <textarea
+                          value={eduAchievements}
+                          onChange={(e) => setEduAchievements(e.target.value)}
+                          rows={4}
+                          placeholder="e.g. Awarded First Class Honours&#10;Relevant modules: Machine Learning, Algorithms"
+                          className="w-full rounded border px-2 py-1.5 text-xs resize-none focus:outline-none focus:ring-1 focus:ring-primary"
+                        />
+                        <div className="flex gap-1.5">
+                          <button
+                            onClick={() => handleSaveEduAchievements(edu.id)}
+                            disabled={savingEdu}
+                            className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-primary-foreground disabled:opacity-50"
+                          >
+                            {savingEdu ? "Saving…" : "Save"}
+                          </button>
+                          <button
+                            onClick={() => setEditingEduId(null)}
+                            className="rounded-md border px-3 py-1 text-xs hover:bg-muted"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    )}
                     {expandedGroups.has(edu.id) && variants.length > 0 && (
                       <div className="mt-3 border-t pt-2 space-y-2">
                         {variants.map((v) => (

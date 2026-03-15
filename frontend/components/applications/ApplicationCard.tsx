@@ -62,6 +62,7 @@ export default function ApplicationCard({
   const [editingNotes, setEditingNotes] = useState(false);
   const [notesText, setNotesText] = useState(app.notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [notesError, setNotesError] = useState<string | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
 
   const status = STATUS_LABEL[app.status] ?? { label: app.status, className: "bg-slate-100 text-slate-600 border border-slate-200" };
@@ -80,9 +81,12 @@ export default function ApplicationCard({
 
   const handleSaveNotes = async () => {
     setSavingNotes(true);
+    setNotesError(null);
     try {
       await onSaveNotes(app.id, notesText);
       setEditingNotes(false);
+    } catch {
+      setNotesError("Failed to save notes — please try again.");
     } finally {
       setSavingNotes(false);
     }
@@ -152,6 +156,9 @@ export default function ApplicationCard({
               autoFocus
               className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-colors"
             />
+            {notesError && (
+              <p className="text-[10px] text-red-600">{notesError}</p>
+            )}
             <div className="flex gap-1.5">
               <button
                 onClick={handleSaveNotes}
@@ -161,7 +168,7 @@ export default function ApplicationCard({
                 {savingNotes ? "Saving…" : "Save"}
               </button>
               <button
-                onClick={() => setEditingNotes(false)}
+                onClick={() => { setEditingNotes(false); setNotesError(null); }}
                 className="rounded-md border border-slate-200 px-3 py-1 text-xs text-slate-600 hover:bg-slate-50 transition-colors"
               >
                 Cancel

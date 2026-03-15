@@ -76,6 +76,25 @@ async def delete_activity(
     return await delete_or_404(db, Activity, activity_id, user_id, "Activity not found")
 
 
+class EducationUpdate(BaseModel):
+    achievements: list[str] | None = None
+
+
+@router.put("/education/{education_id}")
+async def update_education(
+    education_id: uuid.UUID,
+    update: EducationUpdate,
+    db: AsyncSession = Depends(get_db),
+    user_id: uuid.UUID = Depends(get_current_user),
+):
+    """Update education achievements."""
+    edu = await get_or_404(db, Education, education_id, user_id, "Education not found")
+    if update.achievements is not None:
+        edu.achievements = [a for a in update.achievements if a.strip()]
+    await db.commit()
+    return {"id": str(edu.id), "achievements": edu.achievements}
+
+
 @router.delete("/education/{education_id}")
 async def delete_education(
     education_id: uuid.UUID,

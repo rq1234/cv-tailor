@@ -34,6 +34,7 @@ export default function ApplicationsPage() {
     gapRecs,
     loading,
     error,
+    statsError,
     savingOutcomeId,
     deletingId,
     retailoringId,
@@ -41,6 +42,7 @@ export default function ApplicationsPage() {
     coverLetterText,
     coverLetterParts,
     coverLetterLoading,
+    coverLetterTimedOut,
     fetchApplications,
     handleOutcomeChange,
     handleRetailor,
@@ -122,6 +124,8 @@ export default function ApplicationsPage() {
           text={coverLetterText}
           parts={coverLetterParts}
           loading={coverLetterLoading}
+          timedOut={coverLetterTimedOut}
+          onRetry={() => handleGenerateCoverLetter(coverLetterId)}
           onClose={clearCoverLetter}
         />
       )}
@@ -136,6 +140,14 @@ export default function ApplicationsPage() {
           New Application
         </Link>
       </div>
+
+      {/* Stats load warning */}
+      {statsError && (
+        <div className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+          Stats couldn&apos;t load — some metrics may be unavailable.{" "}
+          <button onClick={fetchApplications} className="underline hover:text-amber-900">Retry</button>
+        </div>
+      )}
 
       {/* Stats dashboard */}
       {stats && stats.total > 0 && <ApplicationStats stats={stats} />}

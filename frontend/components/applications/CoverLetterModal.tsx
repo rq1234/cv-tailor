@@ -10,6 +10,8 @@ interface CoverLetterModalProps {
   text: string | null;
   parts: CoverLetterParts | null;
   loading: boolean;
+  timedOut?: boolean;
+  onRetry?: () => void;
   onClose: () => void;
 }
 
@@ -32,7 +34,7 @@ function buildFlatText(p: CoverLetterParts): string {
   ].join("\n");
 }
 
-export default function CoverLetterModal({ text, parts, loading, onClose }: CoverLetterModalProps) {
+export default function CoverLetterModal({ text, parts, loading, timedOut = false, onRetry, onClose }: CoverLetterModalProps) {
   const ref = useRef<HTMLDivElement>(null);
 
   // Editable state — reset whenever a new letter arrives
@@ -103,9 +105,22 @@ export default function CoverLetterModal({ text, parts, loading, onClose }: Cove
         {/* Body */}
         <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 p-6">
           {loading ? (
-            <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-              <Spinner size="sm" />
-              Generating cover letter…
+            <div className="flex flex-col items-center justify-center gap-3 py-16 text-sm text-muted-foreground">
+              <div className="flex items-center gap-2">
+                <Spinner size="sm" />
+                Generating cover letter…
+              </div>
+              {timedOut && onRetry && (
+                <div className="text-center">
+                  <p className="text-xs text-amber-700 mb-2">Taking longer than expected.</p>
+                  <button
+                    onClick={onRetry}
+                    className="rounded-md border border-amber-300 bg-amber-50 px-3 py-1.5 text-xs font-medium text-amber-800 hover:bg-amber-100 transition-colors"
+                  >
+                    Retry
+                  </button>
+                </div>
+              )}
             </div>
           ) : currentParts ? (
             <LetterDocument

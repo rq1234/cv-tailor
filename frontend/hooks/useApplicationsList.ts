@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { z } from "zod";
 import { api } from "@/lib/api";
 import { applicationSchema, type Application, type OutcomeValue } from "@/lib/schemas";
@@ -42,6 +42,7 @@ export function useApplicationsList() {
   const [gapRecs, setGapRecs] = useState<GapRec[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [statsError, setStatsError] = useState(false);
 
   // Per-item loading: tracked by ID string
   const [savingOutcomeId, setSavingOutcomeId] = useState<string | null>(null);
@@ -53,23 +54,34 @@ export function useApplicationsList() {
   const [coverLetterText, setCoverLetterText] = useState<string | null>(null);
   const [coverLetterParts, setCoverLetterParts] = useState<CoverLetterParts | null>(null);
   const [coverLetterLoading, setCoverLetterLoading] = useState(false);
+  const [coverLetterTimedOut, setCoverLetterTimedOut] = useState(false);
+
+  const fetchAbortRef = useRef<AbortController | null>(null);
 
   const fetchApplications = useCallback(async () => {
+    // Cancel any in-flight fetch before starting a new one
+    fetchAbortRef.current?.abort();
+    const abort = new AbortController();
+    fetchAbortRef.current = abort;
+
     setLoading(true);
     setError(null);
+    setStatsError(false);
     try {
       const [data, statsData, gapData] = await Promise.all([
         api.get<Application[]>("/api/applications"),
-        api.get<AppStats>("/api/applications/stats/summary").catch((e) => { console.error("Stats fetch failed:", e); return null; }),
-        api.get<{ recommendations: GapRec[] }>("/api/applications/gap-recommendations").catch((e) => { console.error("Gap recs fetch failed:", e); return null; }),
+        api.get<AppStats>("/api/applications/stats/summary").catch(() => { setStatsError(true); return null; }),
+        api.get<{ recommendations: GapRec[] }>("/api/applications/gap-recommendations").catch(() => null),
       ]);
+      if (abort.signal.aborted) return;
       setApplications(z.array(applicationSchema).parse(data));
       if (statsData) setStats(statsData);
       if (gapData) setGapRecs(gapData.recommendations);
     } catch (err) {
+      if (abort.signal.aborted) return;
       setError(err instanceof Error ? err.message : "Failed to load applications");
     } finally {
-      setLoading(false);
+      if (!abort.signal.aborted) setLoading(false);
     }
   }, []);
 
@@ -119,12 +131,18 @@ export function useApplicationsList() {
     setCoverLetterText(null);
     setCoverLetterParts(null);
     setCoverLetterLoading(true);
+    setCoverLetterTimedOut(false);
     try {
-      const data = await api.post<{ cover_letter: string; parts: CoverLetterParts | null }>(
-        `/api/applications/${appId}/cover-letter`
-      );
-      setCoverLetterText(data.cover_letter);
-      setCoverLetterParts(data.parts ?? null);
+      const timeout = setTimeout(() => setCoverLetterTimedOut(true), 45_000);
+      try {
+        const data = await api.post<{ cover_letter: string; parts: CoverLetterParts | null }>(
+          `/api/applications/${appId}/cover-letter`
+        );
+        setCoverLetterText(data.cover_letter);
+        setCoverLetterParts(data.parts ?? null);
+      } finally {
+        clearTimeout(timeout);
+      }
     } catch (err) {
       setCoverLetterText(err instanceof Error ? `Error: ${err.message}` : "Failed to generate cover letter.");
     } finally {
@@ -136,6 +154,7 @@ export function useApplicationsList() {
     setCoverLetterId(null);
     setCoverLetterText(null);
     setCoverLetterParts(null);
+    setCoverLetterTimedOut(false);
   }, []);
 
   return {
@@ -144,6 +163,7 @@ export function useApplicationsList() {
     gapRecs,
     loading,
     error,
+    statsError,
     savingOutcomeId,
     deletingId,
     retailoringId,
@@ -151,6 +171,7 @@ export function useApplicationsList() {
     coverLetterText,
     coverLetterParts,
     coverLetterLoading,
+    coverLetterTimedOut,
     fetchApplications,
     handleOutcomeChange,
     handleRetailor,

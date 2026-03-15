@@ -174,6 +174,7 @@ async def export_latex(
         raise HTTPException(status_code=500, detail="LaTeX generation failed.")
 
     filename = "cv.tex"
+    app = None
     if cv_version.application_id:
         app_result = await db.execute(
             select(Application).where(
@@ -184,6 +185,11 @@ async def export_latex(
         app = app_result.scalar_one_or_none()
         if app:
             filename = _cv_filename(app.company_name, app.role_title, "tex")
+
+    # Advance application status to "complete" on first successful export
+    if app and app.status == "review":
+        app.status = "complete"
+        await db.commit()
 
     return Response(
         content=latex_content.encode("utf-8"),
