@@ -396,13 +396,21 @@ async def generate_cover_letter(
     candidate_phone = (profile.phone or "") if profile else ""
     candidate_email = (profile.email or "") if profile else ""
 
-    # Build experience context: prefer tailored bullets from diff_json, fall back to raw
+    # Build experience context: prefer accepted bullets from final_cv_json, then tailored
+    # suggestions from diff_json, fall back to raw experience bullets
     experience_context_parts: list[str] = []
     if cv_version and cv_version.diff_json:
-        for diff in list(cv_version.diff_json.values())[:6]:
+        final_cv = cv_version.final_cv_json or {}
+        for exp_id, diff in list(cv_version.diff_json.items())[:6]:
             label = diff.get("label", "")
-            suggested = diff.get("suggested_bullets", [])
-            bullets = [b if isinstance(b, str) else b.get("text", "") for b in suggested[:3]]
+            # Use user-reviewed accepted bullets if available, otherwise suggested
+            final_entry = final_cv.get(exp_id, {})
+            final_bullets_raw = final_entry.get("bullets", []) if final_entry else []
+            if final_bullets_raw:
+                bullets = [b if isinstance(b, str) else b.get("text", "") for b in final_bullets_raw[:3]]
+            else:
+                suggested = diff.get("suggested_bullets", [])
+                bullets = [b if isinstance(b, str) else b.get("text", "") for b in suggested[:3]]
             bullets = [b for b in bullets if b]
             if label and bullets:
                 experience_context_parts.append(f"{label}:\n" + "\n".join(f"  - {b}" for b in bullets))

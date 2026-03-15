@@ -99,33 +99,35 @@ async def _tailor_one_bullet(
         f"Keep all facts, numbers, and tech. Output only the bullet."
     )
 
-    try:
-        response = await client.chat.completions.create(
-            model=settings.model_name,
-            messages=[
-                {"role": "system", "content": BULLET_SYSTEM},
-                {"role": "user", "content": prompt},
-            ],
-            temperature=settings.temp_tailoring,
-            max_tokens=220,
-        )
-        result = response.choices[0].message.content.strip().strip('"\'').lstrip("- ").strip()
+    for _attempt in range(3):
+        try:
+            response = await client.chat.completions.create(
+                model=settings.model_name,
+                messages=[
+                    {"role": "system", "content": BULLET_SYSTEM},
+                    {"role": "user", "content": prompt},
+                ],
+                temperature=settings.temp_tailoring,
+                max_tokens=220,
+            )
+            result = response.choices[0].message.content.strip().strip('"\'').lstrip("- ").strip()
 
-        orig_norm = original.lower().strip().rstrip(".")
-        res_norm = result.lower().strip().rstrip(".")
+            orig_norm = original.lower().strip().rstrip(".")
+            res_norm = result.lower().strip().rstrip(".")
 
-        if (
-            not result
-            or _has_lost_tech_terms(original, result)
-            or _has_hallucinated_numbers(original, result)
-            or _BANNED_PHRASE_RE.search(result)
-            or _is_over_compressed(original, result)
-            or _similarity(orig_norm, res_norm) > 0.78
-        ):
-            return original
-        return result
-    except Exception:
-        return original
+            if (
+                not result
+                or _has_lost_tech_terms(original, result)
+                or _has_hallucinated_numbers(original, result)
+                or _BANNED_PHRASE_RE.search(result)
+                or _is_over_compressed(original, result)
+                or _similarity(orig_norm, res_norm) > 0.78
+            ):
+                continue  # quality check failed — retry
+            return result
+        except Exception:
+            break  # API error — no point retrying
+    return original
 
 
 def _infer_outcome_type(text: str) -> str:

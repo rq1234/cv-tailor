@@ -155,11 +155,13 @@ export const jdRawSchema = z
 
 // ── Applications ───────────────────────────────────────────────────────
 export const OUTCOME_OPTIONS = [
-  { value: "applied",   label: "Applied",     className: "text-blue-700 bg-blue-50" },
-  { value: "interview", label: "Interviewing", className: "text-purple-700 bg-purple-50" },
-  { value: "offer",     label: "Offer",        className: "text-green-700 bg-green-50" },
-  { value: "rejected",  label: "Rejected",     className: "text-red-700 bg-red-50" },
-  { value: "withdrawn", label: "Withdrawn",    className: "text-gray-600 bg-gray-100" },
+  { value: "applied",         label: "Applied",         className: "text-blue-700 bg-blue-50" },
+  { value: "phone_screen",    label: "Phone Screen",    className: "text-sky-700 bg-sky-50" },
+  { value: "first_interview", label: "1st Interview",   className: "text-indigo-700 bg-indigo-50" },
+  { value: "final_interview", label: "Final Interview", className: "text-purple-700 bg-purple-50" },
+  { value: "offer",           label: "Offer",           className: "text-green-700 bg-green-50" },
+  { value: "rejected",        label: "Rejected",        className: "text-red-700 bg-red-50" },
+  { value: "withdrawn",       label: "Withdrawn",       className: "text-gray-600 bg-gray-100" },
 ] as const;
 
 export type OutcomeValue = typeof OUTCOME_OPTIONS[number]["value"];

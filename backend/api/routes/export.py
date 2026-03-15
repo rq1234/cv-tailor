@@ -8,7 +8,7 @@ import uuid
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
-from sqlalchemy import select
+from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
@@ -203,6 +203,7 @@ async def export_pdf(
     latex_content = await generate_latex(db, cv_version, user_id)
 
     filename = "cv.pdf"
+    app = None
     if cv_version.application_id:
         app_result = await db.execute(
             select(Application).where(
@@ -224,6 +225,11 @@ async def export_pdf(
     except RuntimeError as e:
         raise HTTPException(status_code=500, detail="PDF compilation failed. Try downloading the .tex file instead.")
 
+    # Advance application status to "complete" on first successful export
+    if app and app.status == "review":
+        app.status = "complete"
+        await db.commit()
+
     return Response(
         content=pdf_bytes,
         media_type="application/pdf",
@@ -241,6 +247,7 @@ async def export_docx(
     cv_version = await _get_cv_version(cv_version_id, db, user_id)
 
     filename = "cv.docx"
+    app = None
     if cv_version.application_id:
         app_result = await db.execute(
             select(Application).where(
@@ -256,6 +263,11 @@ async def export_docx(
         docx_bytes = await generate_docx(db, cv_version, user_id)
     except Exception:
         raise HTTPException(status_code=500, detail="DOCX generation failed.")
+
+    # Advance application status to "complete" on first successful export
+    if app and app.status == "review":
+        app.status = "complete"
+        await db.commit()
 
     return Response(
         content=docx_bytes,
