@@ -165,14 +165,14 @@ export default function LibraryPage() {
   return (
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
-        <h1 className="text-2xl font-bold">Experience Library</h1>
+        <h1 className="text-3xl font-black tracking-tight text-foreground">Experience Library</h1>
         <div className="flex items-center gap-2">
           <input
             type="search"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             placeholder="Search experiences…"
-            className="w-full sm:w-56 rounded-md border px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+            className="w-full sm:w-56 rounded-lg border border-border px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
           />
           <Link
             href="/upload"
@@ -208,8 +208,10 @@ export default function LibraryPage() {
           {/* Work Experiences */}
           {filteredExpGroups.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3">
-                Work Experience ({filteredExpGroups.length} roles{!q && pool!.work_experiences.length > filteredExpGroups.length ? `, ${pool!.work_experiences.length} variants` : ""})
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-3">
+                <span>Work Experience</span>
+                <span className="flex-1 h-px bg-border" />
+                <span className="font-medium normal-case tracking-normal text-muted-foreground/60">{filteredExpGroups.length} roles</span>
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredExpGroups.map(({ primary: exp, variants }) => (
@@ -241,14 +243,18 @@ export default function LibraryPage() {
           {/* Education */}
           {eduGroups.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3">Education ({eduGroups.length})</h2>
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-3">
+                <span>Education</span>
+                <span className="flex-1 h-px bg-border" />
+                <span className="font-medium normal-case tracking-normal text-muted-foreground/60">{eduGroups.length}</span>
+              </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {eduGroups.map(({ primary: edu, variants }) => (
-                  <div key={edu.id} className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
+                  <div key={edu.id} className="rounded-xl border border-border bg-card p-4 hover:-translate-y-px hover:shadow-md hover:shadow-black/5 transition-all duration-200">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium">{edu.degree || "Untitled"}</h3>
-                        <p className="text-sm text-muted-foreground">{edu.institution || "Unknown Institution"}</p>
+                        <h3 className="font-bold tracking-tight">{edu.degree || "Untitled"}</h3>
+                        <p className="text-sm font-medium text-muted-foreground">{edu.institution || "Unknown Institution"}</p>
                       </div>
                       <div className="flex items-center gap-1.5 ml-2 flex-shrink-0">
                         {variants.length > 0 && (
@@ -342,15 +348,17 @@ export default function LibraryPage() {
           {/* Projects */}
           {filteredProjGroups.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3">
-                Projects ({filteredProjGroups.length}{!q && pool!.projects.length > filteredProjGroups.length ? ` projects, ${pool!.projects.length} variants` : ""})
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-3">
+                <span>Projects</span>
+                <span className="flex-1 h-px bg-border" />
+                <span className="font-medium normal-case tracking-normal text-muted-foreground/60">{filteredProjGroups.length}</span>
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredProjGroups.map(({ primary: proj, variants }) => (
-                  <div key={proj.id} className="rounded-lg border p-4 hover:shadow-sm transition-shadow">
+                  <div key={proj.id} className="rounded-xl border border-border bg-card p-4 hover:-translate-y-px hover:shadow-md hover:shadow-black/5 transition-all duration-200">
                     <div className="flex items-start justify-between">
                       <div className="min-w-0 flex-1">
-                        <h3 className="font-medium">{proj.name || "Untitled Project"}</h3>
+                        <h3 className="font-bold tracking-tight">{proj.name || "Untitled Project"}</h3>
                         {proj.description && (
                           <p className="mt-1 text-sm text-muted-foreground line-clamp-2">{proj.description}</p>
                         )}
@@ -380,7 +388,7 @@ export default function LibraryPage() {
                     {proj.domain_tags && proj.domain_tags.length > 0 && (
                       <div className="mt-2 flex flex-wrap gap-1">
                         {proj.domain_tags.map((tag: string) => (
-                          <span key={tag} className="inline-flex items-center rounded-full bg-blue-50 px-2 py-0.5 text-xs text-blue-700">
+                          <span key={tag} className="inline-flex items-center rounded-full bg-primary/8 px-2.5 py-0.5 text-xs font-medium text-primary">
                             {tag}
                           </span>
                         ))}
@@ -398,7 +406,7 @@ export default function LibraryPage() {
                               {v.domain_tags && v.domain_tags.length > 0 && (
                                 <div className="mt-1 flex flex-wrap gap-1">
                                   {v.domain_tags.map((tag: string) => (
-                                    <span key={tag} className="inline-flex items-center rounded-full bg-blue-50 px-1.5 py-0.5 text-[10px] text-blue-700">
+                                    <span key={tag} className="inline-flex items-center rounded-full bg-primary/8 px-1.5 py-0.5 text-[10px] font-medium text-primary">
                                       {tag}
                                     </span>
                                   ))}
@@ -426,8 +434,10 @@ export default function LibraryPage() {
           {/* Activities */}
           {filteredActGroups.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3">
-                Activities ({filteredActGroups.length}{!q && pool!.activities.length > filteredActGroups.length ? ` roles, ${pool!.activities.length} variants` : ""})
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-3">
+                <span>Activities</span>
+                <span className="flex-1 h-px bg-border" />
+                <span className="font-medium normal-case tracking-normal text-muted-foreground/60">{filteredActGroups.length}</span>
               </h2>
               <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
                 {filteredActGroups.map(({ primary: act, variants }) => (
@@ -450,10 +460,14 @@ export default function LibraryPage() {
           {/* Skills */}
           {pool!.skills.length > 0 && (
             <section>
-              <h2 className="text-lg font-semibold mb-3">Skills ({pool!.skills.length})</h2>
+              <h2 className="text-[11px] font-black uppercase tracking-widest text-muted-foreground mb-4 flex items-center gap-3">
+                <span>Skills</span>
+                <span className="flex-1 h-px bg-border" />
+                <span className="font-medium normal-case tracking-normal text-muted-foreground/60">{pool!.skills.length}</span>
+              </h2>
               <div className="flex flex-wrap gap-2">
                 {pool!.skills.map((skill) => (
-                  <span key={skill.id} className="inline-flex items-center rounded-full border px-3 py-1 text-sm group">
+                  <span key={skill.id} className="inline-flex items-center rounded-full border border-border bg-card px-3 py-1 text-sm font-medium hover:bg-muted hover:border-primary/30 transition-all duration-150 group">
                     {skill.name}
                     {skill.category && (
                       <span className="ml-1.5 text-xs text-muted-foreground">({skill.category})</span>

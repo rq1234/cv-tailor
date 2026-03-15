@@ -23,7 +23,7 @@ export default function NavBar() {
   const pipelineRunning = pipeline !== null && pipeline.status === "running";
 
   return (
-    <nav className="sticky top-0 z-50 border-b bg-white/95 backdrop-blur-sm">
+    <nav className="sticky top-0 z-50 border-b border-border/60 bg-background/95 backdrop-blur-md">
       <div className="mx-auto flex h-14 max-w-7xl items-center justify-between px-4">
         {/* Left: logo + desktop nav */}
         <div className="flex items-center gap-6">
@@ -32,10 +32,10 @@ export default function NavBar() {
             className="flex items-center gap-2"
             onClick={() => setMobileOpen(false)}
           >
-            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-blue-600">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-primary shadow-sm shadow-primary/30">
               <Sparkles className="h-4 w-4 text-white" />
             </div>
-            <span className="text-base font-bold text-slate-900">CV Tailor</span>
+            <span className="text-sm font-black tracking-tight text-foreground">CV Tailor</span>
           </Link>
           {!initializing && user && (
             <div className="hidden md:flex gap-1">
@@ -46,16 +46,13 @@ export default function NavBar() {
                   <Link
                     key={item.href}
                     href={item.href}
-                    className={`relative rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
+                    className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
                       isActive
-                        ? "text-blue-600 bg-blue-50"
-                        : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                        ? "text-primary bg-primary/8 font-semibold"
+                        : "text-muted-foreground hover:text-foreground hover:bg-muted"
                     }`}
                   >
                     {item.label}
-                    {isActive && (
-                      <span className="absolute bottom-0 left-3 right-3 h-0.5 rounded-full bg-blue-600" />
-                    )}
                   </Link>
                 );
               })}
@@ -69,16 +66,16 @@ export default function NavBar() {
             {pipelineRunning && (
               <Link
                 href="/apply"
-                className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-blue-50 border border-blue-200 px-2.5 py-1 text-xs font-medium text-blue-700 hover:bg-blue-100 transition-colors"
+                className="hidden sm:inline-flex items-center gap-1.5 rounded-full bg-primary/8 border border-primary/20 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/12 transition-colors"
                 title="Tailoring in progress — click to view"
               >
-                <span className="h-1.5 w-1.5 rounded-full bg-blue-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
                 Generating…
               </Link>
             )}
             <Link
               href="/apply"
-              className="hidden sm:inline-flex items-center gap-1 rounded-md border px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 hover:text-slate-900 transition-colors"
+              className="hidden sm:inline-flex items-center gap-1 rounded-md border border-border bg-card px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-muted transition-all duration-150"
               title="New Application"
             >
               <Plus className="h-3.5 w-3.5" /> New Application
@@ -97,7 +94,7 @@ export default function NavBar() {
 
       {/* Mobile dropdown menu */}
       {!initializing && user && mobileOpen && (
-        <div className="border-t md:hidden bg-white">
+        <div className="border-t md:hidden bg-background">
           <div className="flex flex-col px-3 py-2 gap-1">
             {navItems.map((item) => {
               const isActive =
@@ -109,8 +106,8 @@ export default function NavBar() {
                   onClick={() => setMobileOpen(false)}
                   className={`rounded-md px-3 py-2.5 text-sm font-medium transition-colors border-l-2 ${
                     isActive
-                      ? "text-blue-600 bg-blue-50 border-blue-600"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-transparent"
+                      ? "text-primary bg-primary/8 border-primary font-semibold"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted border-transparent"
                   }`}
                 >
                   {item.label}

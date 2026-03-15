@@ -28,7 +28,7 @@ export function ErrorBanner({ message, className = "" }: { message: string; clas
 // ── Skeleton primitives ───────────────────────────────────────────────────────
 
 function SkeletonLine({ className = "" }: { className?: string }) {
-  return <div className={`animate-pulse rounded bg-slate-200 ${className}`} />;
+  return <div className={`animate-pulse rounded bg-muted ${className}`} />;
 }
 
 export function SkeletonCard() {

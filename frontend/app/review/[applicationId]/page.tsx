@@ -129,7 +129,7 @@ export default function ReviewPage() {
     <div className="space-y-6">
       {/* Sticky summary bar — slides in on scroll */}
       <div
-        className={`fixed top-14 left-0 right-0 z-30 border-b bg-white/95 backdrop-blur-sm transition-transform duration-200 ${
+        className={`fixed top-14 left-0 right-0 z-30 border-b border-border/60 bg-background/95 backdrop-blur-md transition-transform duration-200 ${
           showStickyBar ? "translate-y-0" : "-translate-y-full"
         }`}
       >
@@ -149,7 +149,7 @@ export default function ReviewPage() {
           <button
             onClick={handleDownloadPdf}
             disabled={saving}
-            className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50"
           >
             <Download className="h-3.5 w-3.5" />
             {saving ? "Exporting…" : "Download PDF"}
@@ -204,10 +204,10 @@ export default function ReviewPage() {
 
       {/* All done CTA — shown when every bullet has a decision */}
       {counts.total > 0 && counts.pending === 0 && (
-        <div className="flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 gap-3 flex-wrap">
+        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/80 px-5 py-4 gap-3 flex-wrap shadow-sm">
           <div className="flex items-center gap-2.5">
             <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span className="text-sm font-medium text-emerald-800">
+            <span className="text-base font-semibold text-emerald-800">
               All {counts.total} bullets reviewed — ready to export
             </span>
           </div>
@@ -215,7 +215,7 @@ export default function ReviewPage() {
             <button
               onClick={handleDownloadPdf}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50"
+              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 shadow-sm shadow-emerald-300/30"
             >
               <Download className="h-3.5 w-3.5" />
               {saving ? "Exporting…" : "Download PDF"}
@@ -231,11 +231,11 @@ export default function ReviewPage() {
       )}
 
       {/* View mode toggle */}
-      <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
+      <div className="flex gap-1 rounded-xl bg-muted border border-border/40 p-1 w-fit">
         <button
           onClick={() => setAndPersistViewMode("diff")}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            viewMode === "diff" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            viewMode === "diff" ? "bg-card text-foreground shadow-md shadow-black/6" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           Diff View
@@ -243,7 +243,7 @@ export default function ReviewPage() {
         <button
           onClick={() => setAndPersistViewMode("preview")}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
-            viewMode === "preview" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
+            viewMode === "preview" ? "bg-card text-foreground shadow-md shadow-black/6" : "text-muted-foreground hover:text-foreground"
           }`}
         >
           Resume Preview

@@ -132,13 +132,11 @@ export function BulletDiffCard({
 
   // Row background based on decision
   const rowBg = isAccepted
-    ? "bg-emerald-50/30"
+    ? "bg-emerald-50/60"
     : isRejected
-    ? "bg-red-50/20"
+    ? "bg-red-50/50"
     : isEditing
-    ? "bg-blue-50/20"
-    : isPending
-    ? "bg-orange-50/20"
+    ? "bg-primary/5"
     : "";
 
   return (
@@ -149,9 +147,9 @@ export function BulletDiffCard({
       onTouchEnd={handleTouchEnd}
     >
       {/* Original column */}
-      <div className={`md:border-r border-slate-100 p-4 ${showOriginal ? "border-b md:border-b-0" : "hidden md:block"}`}>
-        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Original</p>
-        <p className={`text-sm text-slate-500 leading-relaxed ${isAccepted ? "opacity-50" : ""}`}>
+      <div className={`md:border-r border-border/50 p-4 bg-muted/20 ${showOriginal ? "border-b md:border-b-0" : "hidden md:block"}`}>
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-2">Original</p>
+        <p className={`text-sm text-slate-500 leading-relaxed ${isAccepted || isRejected ? "opacity-60" : ""}`}>
           {original ? <HighlightedText text={original} /> : <span className="italic">(no original)</span>}
         </p>
       </div>
@@ -161,7 +159,7 @@ export function BulletDiffCard({
         {/* Header: label + decision buttons */}
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
-            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Suggested</p>
+            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Suggested</p>
             {hasPlaceholder && (
               <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                 Fill in [X]
@@ -179,10 +177,10 @@ export function BulletDiffCard({
             <button
               onClick={() => { setBulletDecision(entryId, idx, "accept", bulletState?.editedText); flashClick("accept"); }}
               title="Accept (A)"
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isAccepted
                   ? "bg-emerald-500 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
+                  : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 hover:shadow-sm"
               }`}
             >
               <Check className="h-3 w-3" />
@@ -191,10 +189,10 @@ export function BulletDiffCard({
             <button
               onClick={() => { setBulletDecision(entryId, idx, "reject", bulletState?.editedText); flashClick("reject"); }}
               title="Reject (R)"
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isRejected
                   ? "bg-red-500 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-red-50 hover:text-red-600"
+                  : "text-slate-400 hover:bg-red-50 hover:text-red-700 hover:shadow-sm"
               }`}
             >
               <X className="h-3 w-3" />
@@ -205,8 +203,8 @@ export function BulletDiffCard({
               title="Edit (E)"
               className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isEditing
-                  ? "bg-blue-500 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-blue-50 hover:text-blue-600"
+                  ? "bg-primary text-white shadow-sm"
+                  : "text-slate-400 hover:bg-primary/8 hover:text-primary hover:shadow-sm"
               }`}
             >
               <Pencil className="h-3 w-3" />
@@ -222,7 +220,7 @@ export function BulletDiffCard({
               value={bulletState?.editedText || text}
               onChange={(e) => setBulletDecision(entryId, idx, "edit", e.target.value)}
               maxLength={600}
-              className="w-full rounded-lg bg-white border border-slate-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-200 px-3 py-2 text-sm text-slate-800 leading-relaxed min-h-[72px] resize-none outline-none transition-colors"
+              className="w-full rounded-lg bg-card border border-border focus:border-primary/60 focus:ring-2 focus:ring-primary/15 px-3 py-2.5 text-sm text-foreground leading-relaxed min-h-[72px] resize-none outline-none transition-all duration-150"
             />
             <div className="flex items-center justify-between mt-1.5">
               {(() => {
@@ -273,30 +271,32 @@ export function BulletDiffCard({
             )}
           </>
         ) : (
-          <p
-            className={`text-sm leading-relaxed transition-all ${
-              isRejected
-                ? "line-through text-slate-400"
-                : isAccepted
-                ? isChanged
+          <div className={isAccepted && isChanged ? "pl-3 border-l-2 border-emerald-400" : ""}>
+            <p
+              className={`text-sm leading-relaxed transition-all ${
+                isRejected
+                  ? "line-through text-slate-400"
+                  : isAccepted
+                  ? isChanged
+                    ? hasPlaceholder
+                      ? "text-amber-800"
+                      : "text-emerald-800 font-medium"
+                    : "text-slate-700"
+                  : isChanged
                   ? hasPlaceholder
                     ? "text-amber-800"
-                    : "text-emerald-800 font-medium"
-                  : "text-slate-700"
-                : isChanged
-                ? hasPlaceholder
-                  ? "text-amber-800"
-                  : "text-slate-800"
-                : "text-slate-600"
-            }`}
-          >
-            {displayText}
-          </p>
+                    : "text-slate-800"
+                  : "text-slate-600"
+              }`}
+            >
+              {displayText}
+            </p>
+          </div>
         )}
 
         {/* Dropped metrics warning */}
         {dropped.length > 0 && !isRejected && (
-          <p className="mt-2 text-[11px] text-amber-700 flex items-start gap-1.5">
+          <p className="mt-2.5 text-[11px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 flex items-start gap-1.5">
             <span className="shrink-0 mt-px">⚠</span>
             <span>
               Not in suggestion:{" "}

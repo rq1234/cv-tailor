@@ -93,20 +93,20 @@ export default function ApplicationCard({
   };
 
   return (
-    <div className="group rounded-xl border border-slate-200 bg-white shadow-sm hover:shadow-md hover:border-slate-300 transition-all duration-150">
+    <div className="group rounded-xl border border-border bg-card shadow-sm hover:shadow-lg hover:shadow-black/5 hover:-translate-y-px transition-all duration-200">
       {/* Card body */}
       <div className="p-4 space-y-3">
         {/* Header row */}
         <div className="flex items-start gap-3">
           {/* Initials avatar */}
-          <div className={`shrink-0 h-10 w-10 rounded-lg ${color.bg} ${color.text} ring-1 ${color.ring} flex items-center justify-center text-sm font-semibold tracking-tight select-none`}>
+          <div className={`shrink-0 h-10 w-10 rounded-xl ${color.bg} ${color.text} flex items-center justify-center text-sm font-bold tracking-tight select-none`}>
             {getInitials(app.company_name)}
           </div>
 
           {/* Company + role */}
           <div className="min-w-0 flex-1">
             <div className="flex items-center gap-1.5 min-w-0">
-              <p className="font-semibold text-slate-900 truncate leading-tight">{app.company_name}</p>
+              <p className="font-bold tracking-tight text-foreground truncate leading-tight">{app.company_name}</p>
               {app.jd_url && (
                 <a
                   href={app.jd_url}
@@ -128,7 +128,13 @@ export default function ApplicationCard({
           </div>
 
           {/* Status badge */}
-          <span className={`shrink-0 inline-flex items-center rounded-full px-2.5 py-0.5 text-[11px] font-semibold tracking-wide ${statusBadgeClass}`}>
+          <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 ${statusBadgeClass}`}>
+            <span className={`h-1.5 w-1.5 rounded-full ${
+              app.status === "complete" ? "bg-emerald-500" :
+              app.status === "review" ? "bg-violet-500" :
+              app.status === "tailoring" ? "bg-primary animate-pulse" :
+              "bg-slate-400"
+            }`} />
             {isRetailoring ? "Re-tailoring…" : status.label}
           </span>
         </div>
@@ -154,7 +160,7 @@ export default function ApplicationCard({
               rows={2}
               placeholder="Add notes about this application…"
               autoFocus
-              className="w-full rounded-lg border border-slate-200 bg-slate-50 px-2.5 py-1.5 text-xs text-slate-700 placeholder:text-slate-400 resize-none focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 focus:bg-white transition-colors"
+              className="w-full rounded-lg border border-border bg-muted/50 px-2.5 py-1.5 text-xs text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:ring-2 focus:ring-primary/15 focus:border-primary focus:bg-card transition-all duration-150"
             />
             {notesError && (
               <p className="text-[10px] text-red-600">{notesError}</p>
@@ -163,7 +169,7 @@ export default function ApplicationCard({
               <button
                 onClick={handleSaveNotes}
                 disabled={savingNotes}
-                className="rounded-md bg-blue-600 px-3 py-1 text-xs font-medium text-white hover:bg-blue-700 disabled:opacity-50 transition-colors"
+                className="rounded-md bg-primary px-3 py-1 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-50 transition-colors"
               >
                 {savingNotes ? "Saving…" : "Save"}
               </button>
@@ -186,11 +192,11 @@ export default function ApplicationCard({
       </div>
 
       {/* Action footer */}
-      <div className="flex items-center gap-1.5 border-t border-slate-100 px-4 py-2.5">
+      <div className="flex items-center gap-1.5 border-t border-border/60 px-4 py-2.5 bg-muted/30">
         {canReview && (
           <Link
             href={`/review/${app.id}`}
-            className="inline-flex items-center gap-1 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors shadow-sm"
+            className="inline-flex items-center gap-1 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 transition-colors shadow-sm shadow-primary/20"
           >
             Review CV
             <svg className="h-3 w-3" viewBox="0 0 20 20" fill="currentColor">
@@ -202,7 +208,7 @@ export default function ApplicationCard({
           <button
             onClick={() => onGenerateCoverLetter(app.id)}
             disabled={isCoverLetterLoading}
-            className="rounded-md border border-slate-200 px-3 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-50 hover:text-slate-800 transition-colors disabled:opacity-50"
+            className="rounded-md border border-border px-3 py-1.5 text-xs font-medium text-foreground/70 hover:bg-muted hover:text-foreground transition-colors disabled:opacity-50"
           >
             {isCoverLetterLoading ? "Generating…" : "Cover Letter"}
           </button>
@@ -229,7 +235,7 @@ export default function ApplicationCard({
           <div className="relative ml-auto" ref={menuRef}>
             <button
               onClick={() => setIsMenuOpen((o) => !o)}
-              className="rounded-md border border-slate-200 p-1.5 text-slate-400 hover:text-slate-600 hover:bg-slate-50 transition-colors"
+              className="rounded-md border border-border p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
               title="More options"
             >
               <svg className="h-3.5 w-3.5" viewBox="0 0 20 20" fill="currentColor">
@@ -237,19 +243,19 @@ export default function ApplicationCard({
               </svg>
             </button>
             {isMenuOpen && (
-              <div className="absolute right-0 bottom-full mb-1.5 z-20 w-44 rounded-xl border border-slate-200 bg-white shadow-lg py-1 overflow-hidden">
+              <div className="absolute right-0 bottom-full mb-1.5 z-20 w-44 rounded-xl border border-border bg-card shadow-xl shadow-black/8 py-1 overflow-hidden">
                 {canReview && (
                   <button
                     onClick={() => { onRetailor(app.id); setIsMenuOpen(false); }}
                     disabled={isRetailoring}
-                    className="w-full px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition-colors"
+                    className="w-full px-3.5 py-2 text-left text-sm text-foreground hover:bg-muted disabled:opacity-50 transition-colors"
                   >
                     {isRetailoring ? "Re-tailoring…" : "Re-tailor"}
                   </button>
                 )}
                 <button
                   onClick={() => { setNotesText(app.notes ?? ""); setEditingNotes(true); setIsMenuOpen(false); }}
-                  className="w-full px-3.5 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 transition-colors"
+                  className="w-full px-3.5 py-2 text-left text-sm text-foreground hover:bg-muted transition-colors"
                 >
                   {app.notes ? "Edit Notes" : "Add Notes"}
                 </button>
@@ -269,7 +275,7 @@ export default function ApplicationCard({
                     Download PDF
                   </Link>
                 )}
-                <div className="my-1 mx-2 border-t border-slate-100" />
+                <div className="my-1 mx-2 border-t border-border/60" />
                 <button
                   onClick={() => { setIsConfirmingDelete(true); setIsMenuOpen(false); }}
                   className="w-full px-3.5 py-2 text-left text-sm text-red-600 hover:bg-red-50 transition-colors"

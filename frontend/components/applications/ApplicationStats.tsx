@@ -51,20 +51,20 @@ export default function ApplicationStats({ stats }: { stats: AppStats }) {
         {STAT_CARDS.map(({ key, label, icon: Icon, iconClass, valueClass }) => (
           <div
             key={key}
-            className="rounded-xl border bg-white px-4 py-4 shadow-sm hover:shadow-md transition-shadow"
+            className="rounded-xl border border-border bg-card px-4 py-4 shadow-sm hover:shadow-lg hover:shadow-black/5 transition-all duration-200"
           >
-            <div className={`mb-2 inline-flex h-8 w-8 items-center justify-center rounded-lg ${iconClass}`}>
+            <div className={`mb-2 inline-flex h-9 w-9 items-center justify-center rounded-lg shadow-sm ${iconClass}`}>
               <Icon className="h-4 w-4" />
             </div>
-            <div className={`text-2xl font-bold ${valueClass}`}>{values[key]}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{label}</div>
+            <div className={`text-3xl font-black tracking-tight ${valueClass}`}>{values[key]}</div>
+            <div className="text-xs font-medium uppercase tracking-widest text-muted-foreground mt-1">{label}</div>
           </div>
         ))}
       </div>
 
       {stats.by_domain.length > 1 && (
-        <div className="rounded-xl border bg-white px-4 py-4 shadow-sm">
-          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">By domain</div>
+        <div className="rounded-xl border border-border bg-card px-4 py-4 shadow-sm">
+          <div className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-3">By domain</div>
           <div className="space-y-2.5">
             {stats.by_domain.map((d) => (
               <div key={d.domain} className="space-y-1">
@@ -75,9 +75,9 @@ export default function ApplicationStats({ stats }: { stats: AppStats }) {
                     <span className="text-violet-600 font-medium">{Math.round(d.interview_rate * 100)}% interview</span>
                   </div>
                 </div>
-                <div className="h-1.5 w-full rounded-full bg-slate-100">
+                <div className="h-1 w-full rounded-full bg-muted">
                   <div
-                    className="h-1.5 rounded-full bg-violet-400 transition-all"
+                    className="h-1 rounded-full bg-primary transition-all"
                     style={{ width: `${Math.round((d.interview_rate / maxInterviewRate) * 100)}%` }}
                   />
                 </div>

@@ -12,31 +12,31 @@
 
 @layer base {
   :root {
-    --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
-    --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
-    --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 221 83% 53%;
+    --background:     40 14% 97%;
+    --card:           0 0% 100%;
+    --popover:        0 0% 100%;
+    --foreground:     230 20% 8%;
+    --card-foreground: 230 20% 8%;
+    --popover-foreground: 230 20% 8%;
+    --primary:        234 89% 58%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 210 20% 96%;
-    --secondary-foreground: 222 47% 11%;
-    --muted: 210 20% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 20% 96%;
-    --accent-foreground: 222 47% 11%;
-    --destructive: 0 84.2% 60.2%;
+    --secondary:      220 14% 94%;
+    --secondary-foreground: 230 20% 8%;
+    --muted:          220 14% 94%;
+    --muted-foreground: 220 9% 46%;
+    --accent:         220 14% 94%;
+    --accent-foreground: 230 20% 8%;
+    --destructive:    0 84% 60%;
     --destructive-foreground: 0 0% 98%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 221 83% 53%;
-    --chart-1: 221 83% 53%;
+    --border:         220 13% 88%;
+    --input:          220 13% 88%;
+    --ring:           234 89% 58%;
+    --chart-1: 234 89% 58%;
     --chart-2: 173 58% 39%;
     --chart-3: 262 52% 47%;
     --chart-4: 43 74% 66%;
     --chart-5: 27 87% 67%;
-    --radius: 0.625rem;
+    --radius: 0.5rem;
   }
   .dark {
     --background: 222 47% 7%;
@@ -74,5 +74,10 @@
   }
   body {
     @apply bg-background text-foreground;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
   }
+  ::-webkit-scrollbar { width: 6px; height: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { @apply bg-border rounded-full; }
+  ::-webkit-scrollbar-thumb:hover { @apply bg-muted-foreground/40; }
 }

@@ -73,15 +73,15 @@ export default function ApplicationsPage() {
     return (
       <div className="space-y-6">
         <div className="flex items-center justify-between">
-          <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
-          <div className="h-9 w-36 animate-pulse rounded-md bg-slate-200" />
+          <div className="h-8 w-36 animate-pulse rounded bg-muted" />
+          <div className="h-9 w-36 animate-pulse rounded-md bg-muted" />
         </div>
         <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
           {[0, 1, 2].map((i) => (
             <div key={i} className="rounded-xl border bg-white px-4 py-4 shadow-sm space-y-2 animate-pulse">
-              <div className="h-8 w-8 rounded-lg bg-slate-200" />
-              <div className="h-7 w-1/2 rounded bg-slate-200" />
-              <div className="h-3 w-1/3 rounded bg-slate-200" />
+              <div className="h-8 w-8 rounded-lg bg-muted" />
+              <div className="h-7 w-1/2 rounded bg-muted" />
+              <div className="h-3 w-1/3 rounded bg-muted" />
             </div>
           ))}
         </div>
@@ -132,10 +132,10 @@ export default function ApplicationsPage() {
 
       {/* Page header */}
       <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-bold">Applications</h1>
+        <h1 className="text-3xl font-black tracking-tight text-foreground">Applications</h1>
         <Link
           href="/apply"
-          className="rounded-md bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90"
+          className="rounded-lg bg-primary px-4 py-2 text-sm font-semibold text-primary-foreground hover:bg-primary/90 shadow-sm shadow-primary/20 transition-all duration-150"
         >
           New Application
         </Link>
@@ -167,12 +167,12 @@ export default function ApplicationsPage() {
               value={search}
               onChange={(e) => setSearch(e.target.value)}
               placeholder="Search by company or role…"
-              className="flex-1 rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="flex-1 rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
             />
             <select
               value={outcomeFilter}
               onChange={(e) => setOutcomeFilter(e.target.value)}
-              className="rounded-md border px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-primary"
+              className="rounded-lg border border-border px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary transition-all duration-150"
             >
               <option value="">All outcomes</option>
               {OUTCOME_OPTIONS.map((o) => (
@@ -180,18 +180,18 @@ export default function ApplicationsPage() {
               ))}
             </select>
             {/* View mode toggle */}
-            <div className="flex gap-1 rounded-lg bg-muted p-1 shrink-0">
+            <div className="flex gap-1 rounded-xl bg-muted border border-border/40 p-1 shrink-0">
               <button
                 onClick={() => setAndPersistViewMode("list")}
                 title="List view"
-                className={`rounded-md p-1.5 transition-colors ${viewMode === "list" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`rounded-md p-1.5 transition-colors ${viewMode === "list" ? "bg-card shadow-md shadow-black/5" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <List className="h-4 w-4" />
               </button>
               <button
                 onClick={() => setAndPersistViewMode("kanban")}
                 title="Kanban view"
-                className={`rounded-md p-1.5 transition-colors ${viewMode === "kanban" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+                className={`rounded-md p-1.5 transition-colors ${viewMode === "kanban" ? "bg-card shadow-md shadow-black/5" : "text-muted-foreground hover:text-foreground"}`}
               >
                 <LayoutGrid className="h-4 w-4" />
               </button>

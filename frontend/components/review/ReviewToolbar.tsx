@@ -78,11 +78,11 @@ export default function ReviewToolbar({
         <div>
           <Link
             href="/applications"
-            className="mb-1.5 inline-flex items-center gap-1 text-xs font-medium text-slate-500 hover:text-blue-600 transition-colors"
+            className="mb-1.5 inline-flex items-center gap-1 text-xs font-medium text-muted-foreground hover:text-primary transition-colors"
           >
             <ArrowLeft className="h-3 w-3" /> Applications
           </Link>
-          <h1 className="text-2xl font-bold leading-tight text-slate-900">
+          <h1 className="text-3xl font-black tracking-tight leading-tight text-foreground">
             {companyName || "Review Tailored CV"}
           </h1>
           {roleTitle && (
@@ -103,9 +103,9 @@ export default function ReviewToolbar({
             const allDone = counts.pending === 0;
             return (
               <div className="mt-2 flex items-center gap-2">
-                <div className="h-1.5 flex-1 max-w-xs rounded-full bg-slate-100 overflow-hidden">
+                <div className="h-1 flex-1 max-w-sm rounded-full bg-muted overflow-hidden">
                   <div
-                    className={`h-1.5 rounded-full transition-all duration-500 ${allDone ? "bg-emerald-500" : "bg-blue-500"}`}
+                    className={`h-1 rounded-full transition-all duration-500 ${allDone ? "bg-emerald-500" : "bg-primary"}`}
                     style={{ width: `${pct}%` }}
                   />
                 </div>
@@ -123,7 +123,7 @@ export default function ReviewToolbar({
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
-          <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
+          <div className="flex items-center gap-1.5 rounded-xl border border-border bg-card px-2 py-1.5 shadow-md shadow-black/5">
             {/* ··· menu: Re-tailor + Reset options */}
             <div className="relative" ref={moreMenuRef}>
               <button
@@ -137,11 +137,11 @@ export default function ReviewToolbar({
                 }
               </button>
               {moreMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border bg-white shadow-lg py-1">
+                <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-xl border border-border bg-card shadow-xl shadow-black/8 py-1">
                   <button
                     onClick={() => { onReTailor(); setMoreMenuOpen(false); }}
                     disabled={retailoring}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2 disabled:opacity-50"
                   >
                     <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
                     {retailoring ? "Re-tailoring…" : "Re-tailor"}
@@ -149,13 +149,13 @@ export default function ReviewToolbar({
                   <div className="my-1 h-px bg-slate-100" />
                   <button
                     onClick={() => { onResetDecisions(); setMoreMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
                   >
                     <RotateCcw className="h-3.5 w-3.5 text-slate-400" /> Reset Decisions
                   </button>
                   <button
                     onClick={() => { onResetEdits(); setMoreMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
                   >
                     <RotateCcw className="h-3.5 w-3.5 text-slate-400" /> Reset Edits
                   </button>
@@ -167,7 +167,7 @@ export default function ReviewToolbar({
             <button
               onClick={onDownloadPdf}
               disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50 shadow-sm"
+              className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-semibold text-white hover:bg-primary/90 transition-colors disabled:opacity-50 shadow-sm shadow-primary/20"
             >
               <Download className="h-3.5 w-3.5" />
               {saving ? "Exporting…" : "Download PDF"}
@@ -183,22 +183,22 @@ export default function ReviewToolbar({
                 <ChevronDown className="h-3.5 w-3.5" />
               </button>
               {exportMenuOpen && (
-                <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-lg border bg-white shadow-lg py-1">
+                <div className="absolute right-0 top-full mt-1 z-20 w-52 rounded-xl border border-border bg-card shadow-xl shadow-black/8 py-1">
                   <button
                     onClick={() => { onOpenOverleaf(); setExportMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
                   >
                     <ExternalLink className="h-3.5 w-3.5 text-slate-400" /> Open in Overleaf
                   </button>
                   <button
                     onClick={() => { onDownloadDocx(); setExportMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
                   >
                     <FileText className="h-3.5 w-3.5 text-slate-400" /> Download .docx
                   </button>
                   <button
                     onClick={() => { onDownloadLatex(); setExportMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-600 hover:bg-slate-50 flex items-center gap-2"
+                    className="w-full px-4 py-2 text-left text-sm text-foreground hover:bg-muted flex items-center gap-2"
                   >
                     <FileText className="h-3.5 w-3.5 text-slate-400" /> Download .tex
                   </button>
