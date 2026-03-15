@@ -1,4 +1,4 @@
-import { Briefcase, CalendarCheck, Trophy, BarChart3 } from "lucide-react";
+import { Briefcase, CalendarCheck, Trophy } from "lucide-react";
 import type { AppStats } from "@/hooks/useApplicationsList";
 
 const STAT_CARDS = [
@@ -23,13 +23,6 @@ const STAT_CARDS = [
     iconClass: "text-emerald-600 bg-emerald-50",
     valueClass: "text-emerald-700",
   },
-  {
-    key: "ats",
-    label: "Avg ATS Score",
-    icon: BarChart3,
-    iconClass: "text-amber-600 bg-amber-50",
-    valueClass: "text-amber-700",
-  },
 ] as const;
 
 export default function ApplicationStats({ stats }: { stats: AppStats }) {
@@ -46,7 +39,6 @@ export default function ApplicationStats({ stats }: { stats: AppStats }) {
     total: stats.total,
     interview: interviewRate,
     offer: offerRate,
-    ats: stats.avg_ats_score ?? "—",
   };
 
   const maxInterviewRate = stats.by_domain.length > 0
@@ -80,7 +72,6 @@ export default function ApplicationStats({ stats }: { stats: AppStats }) {
                   <span className="capitalize font-medium text-slate-700">{d.domain}</span>
                   <div className="flex gap-3 text-slate-500">
                     <span>{d.count} app{d.count !== 1 ? "s" : ""}</span>
-                    {d.avg_ats_score != null && <span>ATS {d.avg_ats_score}</span>}
                     <span className="text-violet-600 font-medium">{Math.round(d.interview_rate * 100)}% interview</span>
                   </div>
                 </div>
