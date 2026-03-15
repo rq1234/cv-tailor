@@ -5,6 +5,7 @@ from __future__ import annotations
 import asyncio
 import re
 from difflib import SequenceMatcher
+from typing import NamedTuple
 
 _NUMBER_RE = re.compile(
     r"\b\d[\d,]*(?:\.\d+)?(?:\+|[kKMB]|%|x)?\b"  # 10,000+ / 25% / 8x / $800K
@@ -15,6 +16,7 @@ _NUMBER_RE = re.compile(
 
 _BANNED_PHRASE_RE = re.compile(
     r"\b(?:"
+    # Self-congratulatory meta-phrases
     r"showcasing|showcases"
     r"|demonstrating\s+(?:strong\s+)?(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency|understanding|knowledge|capabilities?)"
     r"|highlighting\s+(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency)"
@@ -23,6 +25,14 @@ _BANNED_PHRASE_RE = re.compile(
     r"|advancing\s+\w+(?:\s+\w+)?\s+techniques?"
     r"|exceptional\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?|qualities)"
     r"|strong\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?)\s*[,.]?\s*$"
+    # Trailing justification phrases — bullet should BE relevant, not explain why
+    r"|akin\s+to\b"
+    r"|involving\s+both\b"
+    r"|aligning\s+with\b"
+    r"|in\s+line\s+with\b"
+    r"|to\s+support\s+(?:business|team|organizational|company|client)\s+(?:objectives?|goals?|needs?|requirements?)"
+    r"|to\s+meet\s+(?:business|team|client|project)\s+(?:objectives?|goals?|needs?|requirements?)"
+    r"|(?:both\s+)?technical\s+(?:and\s+)?\w+\s+(?:development|skills?|understanding)\b"
     r")",
     re.IGNORECASE,
 )
@@ -71,32 +81,54 @@ from backend.utils import extract_bullet_texts, split_description_to_bullets
 
 
 BULLET_SYSTEM = (
-    "You rewrite CV bullets to better match a job description. "
-    "Hard rules: never introduce numbers not in the original; "
-    "never remove named technologies, tools, or frameworks; "
-    "never append phrases like 'showcasing', 'demonstrating', or 'leveraging expertise'. "
-    "Any user style rules are formatting preferences only — never invent achievements or facts to satisfy them. "
-    "Output only the rewritten bullet, nothing else."
+    "You are a CV editor. Rewrite the given bullet to better target the specified job requirement.\n\n"
+    "Format: [Strong action verb] [what you did/built] [tools or context] [measurable result]. "
+    "Stop at the result. One concise line.\n\n"
+    "Example:\n"
+    "  BAD:  'Worked on data pipelines leveraging strong Python skills to support business objectives'\n"
+    "  GOOD: 'Built Python ETL pipeline ingesting 50 GB daily, reducing reporting latency by 40%'\n\n"
+    "Rules:\n"
+    "- Never introduce numbers not in the original\n"
+    "- Never remove named technologies, tools, or frameworks\n"
+    "- Never add trailing phrases like 'akin to X', 'involving both', 'aligning with', "
+    "'to support objectives', 'showcasing', 'demonstrating', 'leveraging expertise'\n"
+    "- Never invent achievements or facts\n"
+    "- Output only the rewritten bullet, nothing else"
 )
+
+
+class BulletBrief(NamedTuple):
+    """Structured brief passed to the LLM for a single bullet rewrite."""
+    requirement: str   # the specific JD requirement this bullet should target
+    approach: str      # what to change and why, in natural editor voice
+    keep_original: bool = False  # Tier 1 — no JD relevance, return unchanged
 
 
 async def _tailor_one_bullet(
     original: str,
-    brief: str,
-    jd_summary: str,
+    brief: BulletBrief,
+    role_context: str,
     client,
     settings,
 ) -> str:
-    """Tailor a single bullet with a focused, direct prompt — one bullet, one JD target.
+    """Tailor a single bullet — one specific JD requirement, one bullet, one API call.
 
-    This mirrors the ChatGPT approach: given this bullet, rewrite it for this specific
-    JD requirement. Falls back to original if the result fails quality checks.
+    Mirrors real ChatGPT usage: give the model the specific requirement being targeted,
+    the candidate's bullet, and a short editor instruction. Focused context produces
+    focused rewrites.
+
+    Returns the original unchanged when keep_original is True (bullet has no JD
+    relevance — fabricating domain content would be dishonest and useless).
+    Falls back to original if the result fails quality checks after 3 attempts.
     """
+    if brief.keep_original:
+        return original
+
     prompt = (
-        f"Job: {jd_summary}\n\n"
-        f"CV bullet: {original}\n\n"
-        f"Make this bullet more relevant to: {brief.strip()}\n\n"
-        f"Keep all facts, numbers, and tech. Output only the bullet."
+        f"Role: {role_context}\n\n"
+        f"Job requirement to target:\n{brief.requirement}\n\n"
+        f"Candidate's bullet:\n{original}\n\n"
+        f"{brief.approach}"
     )
 
     for _attempt in range(3):
@@ -599,25 +631,55 @@ def _find_redundant_pairs(bullets: list[str]) -> dict[int, int]:
     return redundant
 
 
+_REWRITE_THRESHOLD = 0.12  # JD relevance score below this → full rewrite from JD requirements
+
+
+def _jd_relevance_score(bullet: str, jd_parsed: dict) -> float:
+    """Score how relevant a bullet is to the JD (0–1, keyword overlap ratio).
+
+    Uses required_skills + keywords as the pool. A score of 0.12 on a 16-keyword
+    JD means the bullet mentions ≤1 JD keyword — effectively irrelevant.
+    """
+    pool = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
+    if not pool:
+        return 0.5  # no keywords to judge against — assume neutral
+    matched = sum(1 for kw in pool if _keyword_in_text(kw, bullet))
+    return matched / len(pool)
+
+
+def _best_req(jd_parsed: dict, bullet: str = "") -> str:
+    """Return the single JD key responsibility most relevant to the bullet (or the first)."""
+    key_resps = jd_parsed.get("key_responsibilities", [])
+    if not key_resps:
+        return jd_parsed.get("role_summary", "the role requirements")
+    if not bullet:
+        return key_resps[0]
+    return max(key_resps, key=lambda r: _similarity(bullet.lower(), r.lower()))
+
+
 def _build_bullet_briefs(
     bullets: list[str],
     gap_analysis: dict | None,
     jd_parsed: dict,
     rules_text: str = "",
-) -> list[str]:
-    """For each bullet, build a short tailoring brief: which JD themes to surface.
+) -> list[BulletBrief]:
+    """For each bullet, build a structured BulletBrief (requirement + approach).
 
-    Detects weak bullets and redundant pairs so the model gets explicit strategic
-    direction rather than a gentle nudge — weak/redundant bullets get a full rewrite
-    mandate, not just a reframe instruction.
+    Mirrors real ChatGPT tailoring workflow:
+      1. Score = 0  → keep original (no honest reframe possible).
+      2. Redundant  → rewrite to cover a different requirement.
+      3. Weak       → rewrite from scratch, action-verb-led.
+      4. Gap match  → reframe using gap-analysis framing (LLM-generated, natural language).
+      5. Missing kw → restructure to naturally lead with the missing keyword.
+      6. Present kw → light reframe so the right keyword opens the sentence.
     """
-    # Priority-ordered keywords: required skills first, then general keywords
     priority_keywords = (
         jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     )
 
-    # Build a mapping from bullet text → relevant gap analysis entries
-    bullet_to_framings: dict[str, list[str]] = {}
+    # Gap analysis: assign each mapping to its single best-matching bullet.
+    # Stored as list[tuple[requirement, framing]] so requirement and framing stay separate.
+    bullet_to_framings: dict[str, list[tuple[str, str]]] = {}
     if gap_analysis:
         for mapping in gap_analysis.get("mappings", []):
             evidence = mapping.get("evidence", "").lower()
@@ -625,105 +687,111 @@ def _build_bullet_briefs(
             requirement = mapping.get("requirement", "")
             status = mapping.get("status", "")
             if status in ("strong_match", "partial_match") and evidence:
-                for bullet in bullets:
-                    if _similarity(evidence, bullet.lower()) > 0.4 or any(
-                        word in evidence for word in bullet.lower().split()[:5]
-                    ):
-                        bullet_to_framings.setdefault(bullet, [])
-                        if framing:
-                            bullet_to_framings[bullet].append(
-                                f"{requirement} — {framing}"
-                            )
-                        else:
-                            bullet_to_framings[bullet].append(requirement)
+                best_idx = max(
+                    range(len(bullets)),
+                    key=lambda i: _similarity(evidence, bullets[i].lower()),
+                )
+                if _similarity(evidence, bullets[best_idx].lower()) > 0.25:
+                    b = bullets[best_idx]
+                    bullet_to_framings.setdefault(b, [])
+                    bullet_to_framings[b].append((requirement, framing))
 
-    # Pre-assign missing keywords to best-fit bullets
     keyword_assignment = _assign_keywords_to_bullets(bullets, priority_keywords[:12])
-
-    # Detect quality issues up front so briefs can reflect them
     weakness_map = {i: _bullet_weakness(b) for i, b in enumerate(bullets)}
     redundant_map = _find_redundant_pairs(bullets)
 
-    briefs = []
+    rules_suffix = f"\n\nUser rules:\n{rules_text.strip()}" if rules_text.strip() else ""
+
+    briefs: list[BulletBrief] = []
     for idx, bullet in enumerate(bullets):
+        score = _jd_relevance_score(bullet, jd_parsed)
         weakness = weakness_map.get(idx)
         redundant_of = redundant_map.get(idx)
 
-        # Prefix for weak/redundant bullets — escalates the rewrite mandate
-        prefix = ""
-        if weakness:
-            prefix = (
-                f"  ⚠ WEAK BULLET ({weakness}). REWRITE FROM SCRATCH — "
-                f"treat the original as raw notes, not a template. "
-                f"Write a strong, achievement-oriented bullet that leads with what the JD values.\n"
-            )
-        if redundant_of is not None:
-            prefix = (
-                f"  ⚠ REDUNDANT with bullet #{redundant_of + 1} above (covers the same ground). "
-                f"REWRITE to cover a completely different JD requirement — "
-                f"do NOT repeat the same theme or skill.\n"
-            )
-
-        # Keywords covered by SIBLING bullets only — avoid repeating them
         sibling_covered = [
             kw for kw in priority_keywords
             if not _keyword_in_text(kw, bullet)
             and any(_keyword_in_text(kw, b) for j, b in enumerate(bullets) if j != idx)
         ][:4]
         sibling_note = (
-            f" (Sibling bullets already cover: {', '.join(sibling_covered)} — don't repeat.)"
+            f" Siblings already cover: {', '.join(sibling_covered)} — choose a different angle."
             if sibling_covered else ""
         )
 
-        # Use gap analysis framings if available (highest quality)
-        if bullet in bullet_to_framings:
-            themes = bullet_to_framings[bullet]
-            action = "REWRITE to naturally lead with" if weakness else "Reframe to surface"
-            briefs.append(
-                f"{prefix}  → Tailoring brief: {action} these JD themes: {'; '.join(themes)}."
-                f" Embed the theme into the action — do NOT append it as a trailing phrase.{sibling_note}"
+        # ── Tier 1: Keep original ─────────────────────────────────────────────
+        if score < _REWRITE_THRESHOLD:
+            briefs.append(BulletBrief(requirement="", approach="", keep_original=True))
+
+        # ── Tier 1b: Redundant ────────────────────────────────────────────────
+        elif redundant_of is not None:
+            req = _best_req(jd_parsed, bullet)
+            approach = (
+                f"This bullet covers the same ground as bullet #{redundant_of + 1}. "
+                f"Rewrite to address a completely different JD requirement.{sibling_note}"
+                + rules_suffix
             )
+            briefs.append(BulletBrief(requirement=req, approach=approach))
+
+        # ── Tier 2: Weak structure ────────────────────────────────────────────
+        elif weakness:
+            req = _best_req(jd_parsed, bullet)
+            missing = [kw for kw in priority_keywords[:8] if not _keyword_in_text(kw, bullet)][:3]
+            missing_note = f" Weave in: {', '.join(missing)}." if missing else ""
+            approach = (
+                f"This bullet has weak structure ({weakness}). "
+                f"Rewrite from scratch — strong action verb, achievement-oriented.{missing_note}{sibling_note}"
+                + rules_suffix
+            )
+            briefs.append(BulletBrief(requirement=req, approach=approach))
+
+        # ── Tier 3: Gap-analysis framing ─────────────────────────────────────
+        elif bullet in bullet_to_framings:
+            # Use the first (highest-ranked) gap mapping for this bullet.
+            # requirement = the JD requirement; framing = how to surface it (LLM language).
+            req, framing = bullet_to_framings[bullet][0]
+            approach = (
+                (framing if framing else f"Reframe to surface: {req}.")
+                + f"{sibling_note}" + rules_suffix
+            )
+            briefs.append(BulletBrief(requirement=req, approach=approach))
+
+        # ── Tier 4: Keyword injection ─────────────────────────────────────────
+        elif keyword_assignment.get(idx):
+            assigned = keyword_assignment[idx]
+            req = _best_req(jd_parsed, bullet)
+            present = [kw for kw in priority_keywords if _keyword_in_text(kw, bullet)][:2]
+            keep_note = f" Keep: {', '.join(present)}." if present else ""
+            approach = (
+                f"The bullet is missing: {', '.join(assigned)}. "
+                f"Restructure so these appear naturally in the action or outcome.{keep_note}{sibling_note}"
+                + rules_suffix
+            )
+            briefs.append(BulletBrief(requirement=req, approach=approach))
+
+        # ── Tier 5: Light reframe ─────────────────────────────────────────────
         else:
-            assigned_missing = keyword_assignment.get(idx, [])
-            present_keywords = [
-                kw for kw in priority_keywords if _keyword_in_text(kw, bullet)
-            ][:2]
-            if assigned_missing:
-                present_note = (
-                    f" (Keep present: {', '.join(present_keywords)}.)" if present_keywords else ""
-                )
-                action = "REWRITE from scratch so the bullet naturally centres on" if weakness else "RESTRUCTURE to lead with"
-                briefs.append(
-                    f"{prefix}  → Tailoring brief: {action}: {', '.join(assigned_missing)}."
-                    f" This must be woven into the action itself — not added as a suffix.{present_note}{sibling_note}"
-                )
-            elif present_keywords:
-                action = "REWRITE so" if weakness else "REFRAME so"
-                briefs.append(
-                    f"{prefix}  → Tailoring brief: {action} '{present_keywords[0]}' leads the sentence — "
+            present = [kw for kw in priority_keywords if _keyword_in_text(kw, bullet)][:2]
+            req = _best_req(jd_parsed, bullet)
+            if present:
+                approach = (
+                    f"Already relevant. Move '{present[0]}' to open the sentence — "
                     f"it should be the first concept the reader sees.{sibling_note}"
+                    + rules_suffix
                 )
             else:
-                if weakness:
-                    briefs.append(
-                        f"{prefix}  → Tailoring brief: Rewrite as a strong achievement bullet. "
-                        f"Identify the closest JD theme and lead with it.{sibling_note}"
-                    )
-                else:
-                    briefs.append(
-                        f"  → Tailoring brief: Identify the closest JD Key Responsibility theme and reframe the opening to surface it.{sibling_note} "
-                        f"Only leave unchanged if genuinely unrelated to every JD theme."
-                    )
-    if rules_text.strip():
-        rules_section = f"\n\nUser rules to follow:\n{rules_text.strip()}"
-        briefs = [b + rules_section for b in briefs]
+                approach = (
+                    f"Reframe the opening to surface the closest JD theme.{sibling_note} "
+                    f"Leave unchanged only if genuinely unrelated to every JD theme."
+                    + rules_suffix
+                )
+            briefs.append(BulletBrief(requirement=req, approach=approach))
 
     return briefs
 
 
 async def _tailor_experience_bullets(
     exp: dict,
-    jd_summary: str,
+    role_context: str,
     gap_analysis: dict | None,
     jd_parsed: dict,
     client,
@@ -743,7 +811,7 @@ async def _tailor_experience_bullets(
     briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
-        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        _tailor_one_bullet(bullet, brief, role_context, client, settings)
         for bullet, brief in zip(bullets, briefs)
     ]))
 
@@ -774,12 +842,13 @@ async def tailor_experiences(
     rules_text: str = "",
 ) -> list[TailoredExperience]:
     """Tailor experiences — one focused API call per bullet, all in parallel."""
-    jd_summary = _build_jd_summary(jd_parsed)
+    role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
+    jd_summary = _build_jd_summary(jd_parsed)  # kept for length-refinement helpers
     _client = get_openai_client()
     _settings = get_settings()
 
     tailored = list(await asyncio.gather(*[
-        _tailor_experience_bullets(exp, jd_summary, gap_analysis, jd_parsed, _client, _settings, rules_text)
+        _tailor_experience_bullets(exp, role_context, gap_analysis, jd_parsed, _client, _settings, rules_text)
         for exp in experiences
     ]))
 
@@ -795,7 +864,7 @@ async def tailor_experiences(
 
 async def _tailor_project_bullets(
     proj: dict,
-    jd_summary: str,
+    role_context: str,
     jd_parsed: dict,
     client,
     settings,
@@ -812,7 +881,7 @@ async def _tailor_project_bullets(
     briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
-        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        _tailor_one_bullet(bullet, brief, role_context, client, settings)
         for bullet, brief in zip(bullets, briefs)
     ]))
 
@@ -836,12 +905,13 @@ async def tailor_projects(
     if not projects:
         return []
 
+    role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
     jd_summary = _build_jd_summary(jd_parsed)
     _client = get_openai_client()
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_project_bullets(proj, jd_summary, jd_parsed, _client, _settings, rules_text, gap_analysis)
+        _tailor_project_bullets(proj, role_context, jd_parsed, _client, _settings, rules_text, gap_analysis)
         for proj in projects
     ])
     tailored = [r for r in results if r is not None]
@@ -873,7 +943,7 @@ class TailorActivitiesOutput(BaseModel):
 
 async def _tailor_activity_bullets(
     act: dict,
-    jd_summary: str,
+    role_context: str,
     jd_parsed: dict,
     client,
     settings,
@@ -888,7 +958,7 @@ async def _tailor_activity_bullets(
     briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
-        _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
+        _tailor_one_bullet(bullet, brief, role_context, client, settings)
         for bullet, brief in zip(bullets, briefs)
     ]))
 
@@ -912,12 +982,13 @@ async def tailor_activities(
     if not activities:
         return []
 
+    role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
     jd_summary = _build_jd_summary(jd_parsed)
     _client = get_openai_client()
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_activity_bullets(act, jd_summary, jd_parsed, _client, _settings, rules_text, gap_analysis)
+        _tailor_activity_bullets(act, role_context, jd_parsed, _client, _settings, rules_text, gap_analysis)
         for act in activities
     ])
     tailored = [r for r in results if r is not None]
