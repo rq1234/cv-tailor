@@ -160,10 +160,12 @@ async def generate_docx(db: AsyncSession, cv_version: CvVersion, user_id: uuid.U
                 _add_bullet(bullet)
 
     # ── Technical Skills ─────────────────────────────────────────────────────
+    _SKILL_CATEGORIES = ["Technical", "Certification", "Interests"]
     skills_by_category = context.get("skills_by_category", {})
-    if skills_by_category:
+    ordered_skills = [(c, skills_by_category[c]) for c in _SKILL_CATEGORIES if skills_by_category.get(c)]
+    if ordered_skills:
         _add_section_heading("Technical Skills")
-        for cat, skills in skills_by_category.items():
+        for cat, skills in ordered_skills:
             if skills:
                 p = doc.add_paragraph()
                 p.paragraph_format.space_before = Pt(0)

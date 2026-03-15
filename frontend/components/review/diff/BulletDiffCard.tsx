@@ -88,6 +88,8 @@ export function BulletDiffCard({
   const isPending = !bulletState || bulletState.decision === "pending";
   const displayText = bulletState?.editedText ? bulletState.editedText : text;
   const isChanged = original !== displayText;
+  // AI returned the original unchanged — quality checks rejected the rewrite
+  const isUnchanged = original.trim() !== "" && original.trim() === text.trim();
   const dropped = droppedMetrics(original, text);
   const isRegenerating = regeneratingBullet?.expId === entryId && regeneratingBullet?.idx === idx;
 
@@ -163,6 +165,11 @@ export function BulletDiffCard({
             {hasPlaceholder && (
               <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                 Fill in [X]
+              </span>
+            )}
+            {isUnchanged && !hasPlaceholder && (
+              <span className="inline-flex items-center rounded-full bg-slate-100 px-1.5 py-0.5 text-[10px] font-medium text-slate-400" title="AI couldn't improve this bullet — try editing manually">
+                unchanged
               </span>
             )}
           </div>

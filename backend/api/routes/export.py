@@ -168,7 +168,10 @@ async def export_latex(
     """Generate and return LaTeX source for the given CV version."""
     cv_version = await _get_cv_version(cv_version_id, db, user_id)
 
-    latex_content = await generate_latex(db, cv_version, user_id)
+    try:
+        latex_content = await generate_latex(db, cv_version, user_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="LaTeX generation failed.")
 
     filename = "cv.tex"
     if cv_version.application_id:
@@ -270,7 +273,10 @@ async def export_overleaf(
     """Return LaTeX content for Overleaf. Frontend submits via hidden POST form."""
     cv_version = await _get_cv_version(cv_version_id, db, user_id)
 
-    latex_content = await generate_latex(db, cv_version, user_id)
+    try:
+        latex_content = await generate_latex(db, cv_version, user_id)
+    except Exception:
+        raise HTTPException(status_code=500, detail="LaTeX generation failed.")
 
     return {
         "success": True,

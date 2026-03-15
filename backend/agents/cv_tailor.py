@@ -75,6 +75,7 @@ BULLET_SYSTEM = (
     "Hard rules: never introduce numbers not in the original; "
     "never remove named technologies, tools, or frameworks; "
     "never append phrases like 'showcasing', 'demonstrating', or 'leveraging expertise'. "
+    "Any user style rules are formatting preferences only — never invent achievements or facts to satisfy them. "
     "Output only the rewritten bullet, nothing else."
 )
 
