@@ -93,32 +93,6 @@ export function useReviewDecisions(applicationId: string, result: TailorResult |
     setManualEditsState((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  const acceptAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next: typeof prev = {};
-      for (const [expId, expDecs] of Object.entries(prev)) {
-        next[expId] = {};
-        for (const idx of Object.keys(expDecs)) {
-          next[expId][Number(idx)] = { decision: "accept" };
-        }
-      }
-      return next;
-    });
-  }, []);
-
-  const rejectAll = useCallback(() => {
-    setDecisions((prev) => {
-      const next: typeof prev = {};
-      for (const [expId, expDecs] of Object.entries(prev)) {
-        next[expId] = {};
-        for (const idx of Object.keys(expDecs)) {
-          next[expId][Number(idx)] = { decision: "reject" };
-        }
-      }
-      return next;
-    });
-  }, []);
-
   const resetAllDecisions = useCallback(() => {
     if (!result) return;
     setDecisions(makeInitialDecisions(result));
@@ -160,8 +134,6 @@ export function useReviewDecisions(applicationId: string, result: TailorResult |
     storageWarning,
     setBulletDecision,
     setManualEdit,
-    acceptAll,
-    rejectAll,
     resetAllDecisions,
     resetAllEdits,
     smartAccept,

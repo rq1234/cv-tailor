@@ -5,6 +5,7 @@ import { useExperiencePool } from "@/hooks/useExperiencePool";
 import { api } from "@/lib/api";
 import Link from "next/link";
 import ExperienceCard from "@/components/library/ExperienceCard";
+import { Spinner } from "@/components/ui/Skeleton";
 
 /** Group items by variant_group_id. Primary variant shown first; others are collapsible. */
 function groupByVariant<T extends { id: string; variant_group_id?: string | null; is_primary_variant?: boolean }>(
@@ -98,7 +99,7 @@ export default function LibraryPage() {
   if (poolLoading) {
     return (
       <div className="flex flex-col items-center justify-center py-20 gap-3">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+        <Spinner size="md" />
         <p className="text-sm text-muted-foreground">Loading experience pool...</p>
       </div>
     );

@@ -12,6 +12,8 @@ import {
   ChevronDown,
   ExternalLink,
   FileText,
+  CheckCircle2,
+  MoreHorizontal,
 } from "lucide-react";
 
 interface Counts {
@@ -62,12 +64,12 @@ export default function ReviewToolbar({
   onDismissRecovered,
 }: ReviewToolbarProps) {
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
-  const [resetMenuOpen, setResetMenuOpen] = useState(false);
+  const [moreMenuOpen, setMoreMenuOpen] = useState(false);
   const exportMenuRef = useRef<HTMLDivElement>(null);
-  const resetMenuRef = useRef<HTMLDivElement>(null);
+  const moreMenuRef = useRef<HTMLDivElement>(null);
 
   useClickOutside(exportMenuRef, () => setExportMenuOpen(false));
-  useClickOutside(resetMenuRef, () => setResetMenuOpen(false));
+  useClickOutside(moreMenuRef, () => setMoreMenuOpen(false));
 
   return (
     <div className="space-y-3">
@@ -95,45 +97,71 @@ export default function ReviewToolbar({
               <>, <span className="text-orange-500 font-medium">{counts.pending} pending review</span></>
             )}
           </p>
+          {/* Progress bar */}
+          {counts.total > 0 && (() => {
+            const pct = Math.round(((counts.total - counts.pending) / counts.total) * 100);
+            const allDone = counts.pending === 0;
+            return (
+              <div className="mt-2 flex items-center gap-2">
+                <div className="h-1.5 flex-1 max-w-xs rounded-full bg-slate-100 overflow-hidden">
+                  <div
+                    className={`h-1.5 rounded-full transition-all duration-500 ${allDone ? "bg-emerald-500" : "bg-blue-500"}`}
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                {allDone ? (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
+                    <CheckCircle2 className="h-3.5 w-3.5" /> All reviewed
+                  </span>
+                ) : (
+                  <span className="text-xs text-slate-400">{pct}%</span>
+                )}
+              </div>
+            );
+          })()}
         </div>
 
         {/* Action buttons */}
         <div className="flex flex-wrap items-center gap-2 mt-2 sm:mt-0">
           <div className="flex items-center gap-1.5 rounded-lg border bg-white px-2 py-1.5 shadow-sm">
-            {/* Reset dropdown */}
-            <div className="relative" ref={resetMenuRef}>
+            {/* ··· menu: Re-tailor + Reset options */}
+            <div className="relative" ref={moreMenuRef}>
               <button
-                onClick={() => setResetMenuOpen((o) => !o)}
+                onClick={() => setMoreMenuOpen((o) => !o)}
                 className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-500 hover:bg-slate-100 transition-colors"
+                title="More options"
               >
-                <RotateCcw className="h-3.5 w-3.5" /> Reset <ChevronDown className="h-3 w-3 opacity-60" />
+                {retailoring
+                  ? <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                  : <MoreHorizontal className="h-3.5 w-3.5" />
+                }
               </button>
-              {resetMenuOpen && (
-                <div className="absolute left-0 top-full mt-1 z-20 w-44 rounded-lg border bg-white shadow-lg py-1">
+              {moreMenuOpen && (
+                <div className="absolute left-0 top-full mt-1 z-20 w-48 rounded-lg border bg-white shadow-lg py-1">
                   <button
-                    onClick={() => { onResetDecisions(); setResetMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => { onReTailor(); setMoreMenuOpen(false); }}
+                    disabled={retailoring}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2 disabled:opacity-50"
                   >
-                    Reset Decisions
+                    <RefreshCw className="h-3.5 w-3.5 text-slate-400" />
+                    {retailoring ? "Re-tailoring…" : "Re-tailor"}
+                  </button>
+                  <div className="my-1 h-px bg-slate-100" />
+                  <button
+                    onClick={() => { onResetDecisions(); setMoreMenuOpen(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
+                  >
+                    <RotateCcw className="h-3.5 w-3.5 text-slate-400" /> Reset Decisions
                   </button>
                   <button
-                    onClick={() => { onResetEdits(); setResetMenuOpen(false); }}
-                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50"
+                    onClick={() => { onResetEdits(); setMoreMenuOpen(false); }}
+                    className="w-full px-4 py-2 text-left text-sm text-slate-700 hover:bg-slate-50 flex items-center gap-2"
                   >
-                    Reset Edits
+                    <RotateCcw className="h-3.5 w-3.5 text-slate-400" /> Reset Edits
                   </button>
                 </div>
               )}
             </div>
-            <div className="h-4 w-px bg-slate-200" />
-            <button
-              onClick={onReTailor}
-              disabled={retailoring}
-              className="inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-xs font-medium text-slate-600 hover:bg-slate-100 transition-colors disabled:opacity-50"
-            >
-              <RefreshCw className={`h-3.5 w-3.5 ${retailoring ? "animate-spin" : ""}`} />
-              {retailoring ? "Re-tailoring…" : "Re-tailor"}
-            </button>
             <div className="h-4 w-px bg-slate-200" />
             {/* Download PDF — primary CTA */}
             <button

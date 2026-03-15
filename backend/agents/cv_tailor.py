@@ -70,6 +70,14 @@ from backend.config import get_settings
 from backend.utils import extract_bullet_texts, split_description_to_bullets
 
 
+BULLET_SYSTEM = (
+    "You rewrite CV bullets to better match a job description. "
+    "Hard rules: never introduce numbers not in the original; "
+    "never remove named technologies, tools, or frameworks; "
+    "never append phrases like 'showcasing', 'demonstrating', or 'leveraging expertise'. "
+    "Output only the rewritten bullet, nothing else."
+)
+
 
 async def _tailor_one_bullet(
     original: str,
@@ -93,7 +101,10 @@ async def _tailor_one_bullet(
     try:
         response = await client.chat.completions.create(
             model=settings.model_name,
-            messages=[{"role": "user", "content": prompt}],
+            messages=[
+                {"role": "system", "content": BULLET_SYSTEM},
+                {"role": "user", "content": prompt},
+            ],
             temperature=settings.temp_tailoring,
             max_tokens=220,
         )
@@ -108,7 +119,7 @@ async def _tailor_one_bullet(
             or _has_hallucinated_numbers(original, result)
             or _BANNED_PHRASE_RE.search(result)
             or _is_over_compressed(original, result)
-            or _similarity(orig_norm, res_norm) > 0.85
+            or _similarity(orig_norm, res_norm) > 0.78
         ):
             return original
         return result
@@ -421,126 +432,6 @@ async def _apply_length_refinements(
         tailored_list[ei].suggested_bullets[bi] = result
 
 
-SYSTEM_PROMPT = """\
-You are a CV bullet point tailoring expert who writes achievement-oriented, ATS-friendly bullets.
-
-## Core Philosophy
-Every bullet should answer: "What did I do, and what was the result?" Recruiters skim the top third of a CV in 6 seconds — front-load impact.
-
-## Bullet Structure (use one of these patterns)
-1. QUANTIFIED: "[Action verb] [what you did], resulting in [metric]." — Use when the original has numbers.
-2. PLACEHOLDER: "[Action verb] [what you did], achieving [X]% [outcome type]." — Use when the original describes impactful work but lacks numbers. Mark has_placeholder=true so the user can fill in real figures.
-3. QUALITATIVE: "[Action verb] [what you did], enabling [business outcome]." — Use when the work is strategic/soft and numbers don't apply.
-4. PROCESS (last resort): "[Action verb] [what you did] for/across [scope]." — Only when no outcome can be reasonably inferred.
-
-## NEVER-DROP Rules (highest priority)
-These elements must NEVER be removed from a bullet during tailoring, even if the bullet runs long:
-- **Quantified outcomes**: Any number, percentage, dollar amount, or scale metric (e.g. "10,000+ documents", "40%", "$800K", "500 personnel"). NEVER drop a number.
-- **Named technologies and tools**: Specific tech names like "AWS S3", "React", "PostgreSQL", "RAG", "XGBoost", "SHAP", "Bloomberg API". These are what ATS systems and recruiters Ctrl+F for. You can abbreviate ("retrieval-augmented generation" → "RAG") but NEVER delete a technology.
-- **Scope indicators**: Team sizes, user counts, geographic reach (e.g. "across EMEA", "3 new markets").
-- If keeping all these makes the bullet 130-140 chars, that is ACCEPTABLE. A slightly long bullet that preserves keywords is far better than a short bullet that lost them.
-
-## Keyword Integration Rules (Anti-Stuffing)
-- Each keyword should appear at MOST 2-3 times across ALL bullets combined.
-- Integrate keywords where they naturally describe what was done, NOT as appended lists.
-- NEVER add a keyword that doesn't relate to what the person actually did in that role.
-- Prefer synonyms and natural variations over exact repetition (e.g. alternate between "stakeholder management" and "partnered with cross-functional stakeholders").
-- If a keyword doesn't fit ANY experience, do NOT force it in. Flag it in changes_made as "keyword X: no natural fit found."
-
-## BANNED Phrases (Highest Priority — Never Use These)
-You are a senior CV reviewer with 15 years of experience. These phrases INSTANTLY mark a bullet as AI-generated and unnatural. NEVER append or include:
-- "showcasing [skill]", "demonstrating [skill]", "highlighting [skill]"
-- "leveraging expertise in [X]", "showcasing proficiency in [X]"
-- "showcasing strong [X] skills", "demonstrating solid [X] abilities"
-- "aligning with [X] objectives", "contributing to [X] goals"
-- Any phrase that TELLS the reader about a skill rather than SHOWING it through action
-
-Instead of TELLING ("demonstrating quantitative analysis skills"), SHOW by embedding the skill into the action:
-- BAD: "Selected as 1 of 80 students for Citadel's Trading Invitational, demonstrating quantitative analysis skills"
-- GOOD: "Selected as 1 of 80 students for Citadel's European Trading Invitational" (already strong — leave it alone)
-- BAD: "Engineered an automated data pipeline with PostgreSQL, showcasing Python expertise"
-- GOOD: "Built an automated data pipeline in Python using PostgreSQL, AWS S3, and OpenAI embeddings to vectorise 10,000+ documents"
-
-The rule is simple: if you can delete the ending clause and the bullet still makes sense, the clause was filler. Real tailoring changes the FRAMING of the action, not tacking praise onto the end.
-
-## Action Verb Rules
-- Within the SAME experience section, avoid starting consecutive bullets with the same verb. Using "Built" in one job and "Built" in another job is fine — repetition only looks bad when multiple bullets in the same role all open the same way.
-- Vary verb strength by seniority: entry (built, developed, analyzed, created) → senior (architected, spearheaded, drove) → lead (defined, established, transformed).
-
-## Truthfulness Rules
-- NEVER invent metrics, outcomes, or responsibilities not implied by the original bullet.
-- When adding a placeholder [X], choose a plausible outcome type based on the work described (e.g. cost savings, efficiency gain, user growth, error reduction).
-- If the original bullet describes process work with no clear outcome, it's OK to leave it as a process bullet rather than fabricate impact.
-- Preserve the original scope and seniority — don't inflate "assisted with" into "led" or "managed."
-
-## Seniority Calibration
-- Entry/Mid: Focus on execution, learning velocity, tools used. "Built X using Y, reducing Z by [X]%."
-- Senior: Focus on ownership, cross-team impact, decisions made. "Designed and led X, driving [X]% improvement in Y."
-- Lead/Director: Focus on strategy, team outcomes, business impact. "Defined strategy for X across N teams, resulting in [X]% Y."
-
-## What "Tailoring" Actually Means
-Think of the original bullet as a **fact sheet**. The facts are fixed — every number, tech name, scope, and achievement must be preserved. But the framing, emphasis, and sentence structure should be **completely rebuilt** for this job.
-
-Ask yourself: "If this candidate had written their CV knowing this exact job description, how would this bullet read?" Write that version.
-
-1. **REWRITE from scratch**, leading with what the JD cares about most. The original sentence structure is a suggestion, not a constraint. A complete restructure is encouraged.
-2. **EMBED JD language into the action itself** — "Built real-time data pipelines using Airflow" not "Built Airflow pipelines, supporting real-time analytics objectives." The JD theme goes IN the doing, not tacked on at the end.
-3. **PRESERVE every fact**: tech names, numbers, scope, outcomes. These are non-negotiable.
-4. A bullet that reads noticeably differently — with the same facts — is always better than one that barely changed.
-
-The ONLY reason to leave a bullet close to unchanged is if it already perfectly leads with the right JD theme and no structural improvement is possible. That should be rare.
-
-## Length Guideline
-- TARGET: 120-170 characters per bullet. This keeps bullets detailed and substantive.
-- ACCEPTABLE: 100-200 characters. Longer bullets that preserve all details are ALWAYS better than shorter bullets that lost information.
-- NEVER sacrifice a technology name, metric, scope, or achievement to shorten a bullet.
-- If a bullet must be shortened, cut filler words ("utilized"→"used", "in order to"→"to", "leveraged"→"used") — NEVER cut named technologies, numbers, or outcomes.
-
-## coaching_note
-Write one short, honest, action-oriented sentence for the user who will review your suggestions.
-- Strong match (confidence ≥ 0.85): confirm it and say what to preserve. e.g. "Strong match — keep the deal sizes and client names in every bullet."
-- Partial match (0.65–0.84): say how to strengthen. e.g. "Partial match — frame the Python work toward data pipeline requirements."
-- Weak match (< 0.65): be honest. e.g. "Gap area — JD wants stakeholder management; surface any cross-team work if truthful."
-- Max 100 characters. No filler phrases. Write it directly to the user (no "Note:" prefix).
-
-## Examples: Paraphrasing vs. Real Tailoring
-These examples show the difference between useless paraphrasing and meaningful tailoring.
-
-### Example 1 — JD emphasizes "real-time analytics" and "data pipelines"
-Original: "Built batch ETL pipelines using Airflow to process 10K+ daily records into PostgreSQL"
-BAD (paraphrasing): "Developed ETL pipelines utilizing Airflow to handle 10K+ daily records in PostgreSQL" ← synonym swap ("Built"→"Developed", "using"→"utilizing"), no JD alignment
-GOOD (tailoring): "Built real-time data pipelines using Airflow, processing 10K+ daily records into PostgreSQL for analytics" ← leads with "real-time data pipelines" (JD theme), adds "for analytics" (JD context), keeps all tech and metrics
-
-### Example 2 — JD emphasizes "stakeholder communication" and "cross-functional collaboration"
-Original: "Analyzed sales data and created weekly Tableau dashboards for the marketing team"
-BAD (paraphrasing): "Developed Tableau dashboards by analyzing sales data for marketing" ← reworded but no JD theme surfaced
-GOOD (tailoring): "Partnered with cross-functional stakeholders to design Tableau dashboards from sales data, driving data-informed marketing decisions" ← leads with "cross-functional stakeholders" (JD theme), adds "data-informed decisions" (JD outcome signal)
-
-### Example 3 — Bullet already uses JD vocabulary but can lead stronger
-Original: "Designed and deployed ML pipeline using XGBoost and SHAP, reducing churn by 15%"
-JD emphasises: "predictive modelling" and "customer retention"
-BAD (verbatim cop-out): return unchanged ← lazy
-GOOD: "Built predictive ML pipeline (XGBoost, SHAP) to model customer churn, driving 15% retention improvement" ← reframes around "predictive modelling" and "customer retention", preserves all tech and metrics
-
-### Example 4 — JD emphasizes "Python" and "quantitative analysis" (ANTI-PATTERN)
-Original: "Selected as 1 of 80 students across EMEA for Citadel's European Trading Invitational"
-BAD (appended filler): "Selected as 1 of 80 students for Citadel's European Trading Invitational, demonstrating quantitative analysis skills" ← "demonstrating X skills" is empty filler a recruiter will ignore
-GOOD (no JD theme possible): Return unchanged ONLY when the brief says no JD theme can be truthfully added. "1 of 80" is already a strong signal; forced additions read as AI-generated.
-
-## Output Rules
-- CRITICAL: A change must either: (a) reframe the opening to lead with a JD Key Responsibility theme, (b) add a JD-relevant outcome signal or framing context, or (c) meaningfully surface a hidden keyword. Synonym swaps alone ("Built"→"Developed", "using"→"utilizing") are NOT improvements. A rewrite that is 95%+ similar to the original will be rejected — it must read noticeably differently.
-- CRITICAL: Return EXACTLY the same number of suggested_bullets as original_bullets — one per original bullet. Never split a bullet into two. Never merge two into one.
-- CRITICAL: NEVER remove technical terms, model names, framework names, or specific methods from the original bullet. Every tech term (XGBoost, SHAP, PostgreSQL, RAG, etc.) that appears in the original must appear in the rewrite. Dropping a tech term is always wrong.
-- For each change, document what you changed and why in changes_made. If you shortened a bullet, explain what you removed and why it was safe to remove.
-- In requirements_addressed, list which JD requirements this experience's bullets now cover.
-- Set confidence based on how well the rewrite matches the JD (0.5 = minimal, 1.0 = strong match).
-
-{domain_section}
-
-{gap_analysis_section}
-
-{rules_section}
-"""
 
 
 
@@ -709,6 +600,7 @@ def _build_bullet_briefs(
     bullets: list[str],
     gap_analysis: dict | None,
     jd_parsed: dict,
+    rules_text: str = "",
 ) -> list[str]:
     """For each bullet, build a short tailoring brief: which JD themes to surface.
 
@@ -819,6 +711,10 @@ def _build_bullet_briefs(
                         f"  → Tailoring brief: Identify the closest JD Key Responsibility theme and reframe the opening to surface it.{sibling_note} "
                         f"Only leave unchanged if genuinely unrelated to every JD theme."
                     )
+    if rules_text.strip():
+        rules_section = f"\n\nUser rules to follow:\n{rules_text.strip()}"
+        briefs = [b + rules_section for b in briefs]
+
     return briefs
 
 
@@ -829,6 +725,7 @@ async def _tailor_experience_bullets(
     jd_parsed: dict,
     client,
     settings,
+    rules_text: str = "",
 ) -> TailoredExperience:
     """Tailor each bullet with its own focused call — one bullet, one JD target."""
     bullets = extract_bullet_texts(exp.get("bullets", []))
@@ -840,7 +737,7 @@ async def _tailor_experience_bullets(
             suggested_bullets=[], changes_made=[], confidence=0.5,
         )
 
-    briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed)
+    briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
         _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
@@ -879,7 +776,7 @@ async def tailor_experiences(
     _settings = get_settings()
 
     tailored = list(await asyncio.gather(*[
-        _tailor_experience_bullets(exp, jd_summary, gap_analysis, jd_parsed, _client, _settings)
+        _tailor_experience_bullets(exp, jd_summary, gap_analysis, jd_parsed, _client, _settings, rules_text)
         for exp in experiences
     ]))
 
@@ -891,79 +788,6 @@ async def tailor_experiences(
     return tailored
 
 
-PROJECT_SYSTEM_PROMPT = """\
-You are a CV bullet point tailoring expert. You are tailoring bullets for projects and leadership activities.
-
-## Core Philosophy
-Project/leadership bullets should highlight initiative, technical depth, and transferable skills relevant to the target role.
-
-## Bullet Structure (use one of these patterns)
-1. QUANTIFIED: "[Action verb] [what you did], resulting in [metric]." — Use when the original has numbers.
-2. PLACEHOLDER: "[Action verb] [what you did], achieving [X]% [outcome type]." — Use when impactful but lacks numbers. Mark has_placeholder=true.
-3. QUALITATIVE: "[Action verb] [what you did], enabling [outcome]." — Use when numbers don't apply.
-4. PROCESS (last resort): "[Action verb] [what you did] for/across [scope]." — Only when no outcome can be inferred.
-
-## NEVER-DROP Rules (highest priority)
-- **Quantified outcomes**: NEVER remove numbers, percentages, dollar amounts, or scale metrics.
-- **Named technologies and tools**: NEVER remove specific tech names. Abbreviate if needed but never delete.
-- **Scope indicators**: Team sizes, user counts, competition rankings (e.g. "Top 5", "500 projects").
-- A 135-char bullet that preserves keywords is better than a 115-char bullet that lost them.
-
-## Keyword Integration Rules
-- Integrate JD keywords naturally where they describe what was actually done.
-- NEVER add keywords that don't relate to the actual project work.
-- Prefer natural variations over exact repetition.
-
-## BANNED Phrases (Never Use)
-NEVER append filler like "showcasing [skill]", "demonstrating [skill]", "highlighting [skill]", "leveraging expertise in [X]". These instantly mark a bullet as AI-generated. If the ending clause can be deleted and the bullet still makes sense, it was filler. Embed keywords into the ACTION, don't tack praise onto the end.
-
-## Action Verb Rules
-- Within the SAME project/activity, avoid starting consecutive bullets with the same verb. Cross-entry repetition is fine.
-- Vary verbs: Built, Implemented, Designed, Created, Engineered, Launched, Automated, Led.
-
-## Truthfulness Rules
-- NEVER invent metrics, outcomes, or responsibilities not implied by the original bullet.
-- Preserve the original scope — don't inflate contributions.
-
-## What "Tailoring" Actually Means
-- REFRAME to lead with the theme the JD cares about. Move the JD-critical element to the opening clause.
-- ADD JD-relevant framing (e.g. "for real-time analytics") only if truthful.
-- KEEP all existing tech details and metrics.
-- Every bullet MUST be actively improved. Even a good bullet can be reframed to lead more strongly with the JD priority. Only leave a bullet unchanged if the tailoring brief says there is no JD theme that can be truthfully added.
-
-## Length Guideline
-- TARGET: 120-170 characters. ACCEPTABLE: 100-200 characters.
-- Longer bullets that preserve all details are ALWAYS better than shorter bullets that lost information.
-- NEVER sacrifice a technology name, metric, achievement, or scope to shorten a bullet.
-- Cut filler words first ("utilized"→"used", "in order to"→"to"), NEVER named technologies, numbers, or outcomes.
-
-## coaching_note
-Write one short, honest sentence for the user reviewing your suggestions.
-- Strong match: confirm it and say what to preserve. e.g. "Strong match — keep the tech stack and metrics in every bullet."
-- Partial match: say how to strengthen. e.g. "Partial match — lean into the ML angle to align with the JD."
-- Weak match: be honest. e.g. "Gap area — JD wants production systems experience; highlight any deployed work."
-- Max 100 characters. No filler. Write directly to the user.
-
-## Examples: Paraphrasing vs. Real Tailoring
-### Example 1 — JD emphasizes "machine learning" and "production systems"
-Original: "Built a sentiment analysis tool using BERT and Flask, processing 5K reviews"
-BAD (paraphrasing): "Developed a sentiment analysis application utilizing BERT and Flask for 5K reviews" ← synonym swap, no JD alignment
-GOOD (tailoring): "Built production sentiment analysis pipeline using BERT and Flask, processing 5K reviews for ML-driven insights" ← leads with "production" (JD theme), adds "ML-driven" context
-
-### Example 2 — Bullet already uses JD vocab but can lead stronger
-Original: "Led a team of 4 to build a real-time dashboard using React and D3.js, winning 2nd place"
-JD emphasises: "data visualisation" and "cross-functional collaboration"
-GOOD: "Spearheaded cross-functional team of 4 to deliver real-time data visualisation dashboard (React, D3.js), winning 2nd place" ← leads with "cross-functional" and "data visualisation" (JD themes), preserves all facts
-
-## Output Rules
-- CRITICAL: A rewrite must either: (a) reframe the opening to lead with a JD theme, (b) add JD-relevant framing context, or (c) surface a hidden keyword. Synonym swaps alone are NOT improvements. A rewrite 95%+ similar to the original will be rejected.
-- CRITICAL: NEVER remove technical terms, model names, framework names, or specific methods. Every tech term in the original must appear in the rewrite. Dropping a tech term is always wrong.
-- For each change, document what you changed and why in changes_made.
-
-{domain_section}
-
-{rules_section}
-"""
 
 
 async def _tailor_project_bullets(
@@ -972,6 +796,8 @@ async def _tailor_project_bullets(
     jd_parsed: dict,
     client,
     settings,
+    rules_text: str = "",
+    gap_analysis: dict | None = None,
 ) -> TailoredProject | None:
     bullets = extract_bullet_texts(proj.get("bullets", []))
     if not bullets:
@@ -980,7 +806,7 @@ async def _tailor_project_bullets(
         return None
 
     proj_id = str(proj["id"])
-    briefs = _build_bullet_briefs(bullets, None, jd_parsed)
+    briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
         _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
@@ -1002,6 +828,7 @@ async def tailor_projects(
     projects: list[dict],
     jd_parsed: dict,
     rules_text: str = "",
+    gap_analysis: dict | None = None,
 ) -> list[TailoredProject]:
     if not projects:
         return []
@@ -1011,7 +838,7 @@ async def tailor_projects(
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_project_bullets(proj, jd_summary, jd_parsed, _client, _settings)
+        _tailor_project_bullets(proj, jd_summary, jd_parsed, _client, _settings, rules_text, gap_analysis)
         for proj in projects
     ])
     tailored = [r for r in results if r is not None]
@@ -1047,13 +874,15 @@ async def _tailor_activity_bullets(
     jd_parsed: dict,
     client,
     settings,
+    rules_text: str = "",
+    gap_analysis: dict | None = None,
 ) -> TailoredActivity | None:
     bullets = extract_bullet_texts(act.get("bullets", []))
     if not bullets:
         return None
 
     act_id = str(act["id"])
-    briefs = _build_bullet_briefs(bullets, None, jd_parsed)
+    briefs = _build_bullet_briefs(bullets, gap_analysis, jd_parsed, rules_text)
 
     rewritten = list(await asyncio.gather(*[
         _tailor_one_bullet(bullet, brief, jd_summary, client, settings)
@@ -1075,6 +904,7 @@ async def tailor_activities(
     activities: list[dict],
     jd_parsed: dict,
     rules_text: str = "",
+    gap_analysis: dict | None = None,
 ) -> list[TailoredActivity]:
     if not activities:
         return []
@@ -1084,7 +914,7 @@ async def tailor_activities(
     _settings = get_settings()
 
     results = await asyncio.gather(*[
-        _tailor_activity_bullets(act, jd_summary, jd_parsed, _client, _settings)
+        _tailor_activity_bullets(act, jd_summary, jd_parsed, _client, _settings, rules_text, gap_analysis)
         for act in activities
     ])
     tailored = [r for r in results if r is not None]

@@ -264,15 +264,6 @@ class PipelineStatusOut(BaseModel):
     cv_version_id: uuid.UUID | None  # Latest CvVersion id if one exists
 
 
-class CvVersionOut(BaseModel):
-    """One entry in the version history list."""
-    model_config = _ORM_CONFIG
-    id: uuid.UUID
-    created_at: datetime
-    ats_score: float | None
-    baseline_ats_score: float | None
-
-
 # ── Tailoring ──────────────────────────────────────────────────────────
 class TailorRunRequest(BaseModel):
     application_id: uuid.UUID

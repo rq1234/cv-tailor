@@ -7,6 +7,7 @@ import { api } from "@/lib/api";
 import { parseSummarySchema, type ParseSummary, type ReviewItem, type UnclassifiedBlock } from "@/lib/schemas";
 import { useAppStore } from "@/store/appStore";
 import { OnboardingBanner } from "@/components/onboarding/OnboardingBanner";
+import { Spinner, ErrorBanner } from "@/components/ui/Skeleton";
 
 const CATEGORY_TO_API: Record<string, string> = {
   "Work Experience": "work_experience",
@@ -113,10 +114,8 @@ export default function UploadPage() {
 
       {uploading && (
         <div className="flex flex-col items-center justify-center rounded-lg border p-12">
-          <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
-          <p className="mt-4 text-sm text-muted-foreground">
-            Extracting and parsing your CV...
-          </p>
+          <Spinner size="lg" />
+          <p className="mt-4 text-sm text-muted-foreground">Extracting and parsing your CV...</p>
         </div>
       )}
 

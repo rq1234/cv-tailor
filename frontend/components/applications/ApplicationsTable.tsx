@@ -1,9 +1,11 @@
 "use client";
 
-import React, { useEffect, useRef, useState } from "react";
+import React, { useRef, useState } from "react";
 import Link from "next/link";
-import { OUTCOME_OPTIONS, type Application, type OutcomeValue } from "@/lib/schemas";
+import { type Application, type OutcomeValue } from "@/lib/schemas";
 import { STATUS_LABEL } from "@/lib/constants";
+import { useClickOutside } from "@/hooks/useClickOutside";
+import { OutcomeDropdown } from "./OutcomeDropdown";
 
 interface ApplicationsTableProps {
   applications: Application[];
@@ -40,11 +42,7 @@ export default function ApplicationsTable({
   const tableRef = useRef<HTMLDivElement>(null);
 
   // Close overflow menus on outside click
-  useEffect(() => {
-    const handler = () => setOverflowMenuId(null);
-    document.addEventListener("click", handler);
-    return () => document.removeEventListener("click", handler);
-  }, []);
+  useClickOutside(tableRef, () => setOverflowMenuId(null), overflowMenuId !== null);
 
   const startEditNotes = (app: Application) => {
     setEditingNotesId(app.id);
@@ -80,7 +78,6 @@ export default function ApplicationsTable({
             const date = new Date(app.created_at).toLocaleDateString("en-GB", {
               day: "numeric", month: "short", year: "numeric",
             });
-            const outcomeOption = OUTCOME_OPTIONS.find((o) => o.value === app.outcome);
             const canReview = app.status === "review" || app.status === "complete";
             const isRetailoring = retailoringId === app.id;
             const isDeletingThis = deletingId === app.id;
@@ -130,24 +127,13 @@ export default function ApplicationsTable({
                     )}
                   </td>
                   <td className="px-4 py-3">
-                    <div className="relative inline-flex items-center">
-                      <select
-                        value={app.outcome ?? ""}
-                        onChange={(e) => onOutcomeChange(app.id, e.target.value as OutcomeValue | "")}
-                        disabled={savingOutcomeId === app.id}
-                        className={`rounded-full border-0 py-0.5 pl-2 pr-6 text-xs font-medium appearance-none cursor-pointer focus:ring-1 focus:ring-primary disabled:opacity-50 ${
-                          outcomeOption ? outcomeOption.className : "text-muted-foreground bg-muted/50"
-                        }`}
-                      >
-                        <option value="">— set outcome —</option>
-                        {OUTCOME_OPTIONS.map((o) => (
-                          <option key={o.value} value={o.value}>{o.label}</option>
-                        ))}
-                      </select>
-                      <svg className="pointer-events-none absolute right-1.5 h-3 w-3 text-current opacity-60" viewBox="0 0 20 20" fill="currentColor">
-                        <path fillRule="evenodd" d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z" clipRule="evenodd" />
-                      </svg>
-                    </div>
+                    <OutcomeDropdown
+                      value={app.outcome}
+                      appId={app.id}
+                      disabled={savingOutcomeId === app.id}
+                      variant="table"
+                      onChange={onOutcomeChange}
+                    />
                   </td>
                   <td className="px-4 py-3 text-muted-foreground">{date}</td>
                   <td className="px-4 py-3 text-right">

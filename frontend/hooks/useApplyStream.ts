@@ -28,6 +28,7 @@ export function useApplyStream() {
   const [tailoring, setTailoring] = useState(false);
   const [pipelineSteps, setPipelineSteps] = useState<PipelineStep[]>([]);
   const [pipelineError, setPipelineErrorLocal] = useState<string | null>(null);
+  const [completedApplicationId, setCompletedApplicationId] = useState<string | null>(null);
   const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
@@ -98,7 +99,7 @@ export function useApplyStream() {
               if (data.cv_version_id) {
                 clearPipeline();
                 setTailoring(false);
-                router.push(`/review/${appId}`);
+                setCompletedApplicationId(appId);
                 return;
               }
             } catch {
@@ -132,7 +133,7 @@ export function useApplyStream() {
       if (status.cv_version_id) {
         clearPipeline();
         setTailoring(false);
-        router.push(`/review/${appId}`);
+        setCompletedApplicationId(appId);
         return;
       }
       if (is409 && status.pipeline_started_at) {
@@ -158,14 +159,16 @@ export function useApplyStream() {
     setTailoring(true);
     setPipelineSteps([]);
     setPipelineErrorLocal(null);
+    setCompletedApplicationId(null);
     clearPipeline();
     await runStream(appId, selection, MAX_RETRIES, mode);
   }, [runStream, clearPipeline]);
 
   const resetStream = useCallback(() => {
     setPipelineErrorLocal(null);
+    setCompletedApplicationId(null);
     clearPipeline();
   }, [clearPipeline]);
 
-  return { tailoring, pipelineSteps, pipelineError, startStream, resetStream };
+  return { tailoring, pipelineSteps, pipelineError, completedApplicationId, startStream, resetStream };
 }

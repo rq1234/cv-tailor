@@ -9,10 +9,24 @@ import GapRecommendations from "@/components/applications/GapRecommendations";
 import CoverLetterModal from "@/components/applications/CoverLetterModal";
 import ApplicationCard from "@/components/applications/ApplicationCard";
 import ApplicationsTable from "@/components/applications/ApplicationsTable";
+import ApplicationKanban from "@/components/applications/ApplicationKanban";
+import { SkeletonCard, ErrorBanner } from "@/components/ui/Skeleton";
+import { LayoutGrid, List } from "lucide-react";
 
 export default function ApplicationsPage() {
   const [search, setSearch] = useState("");
   const [outcomeFilter, setOutcomeFilter] = useState("");
+  const [viewMode, setViewMode] = useState<"list" | "kanban">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("applications-view-mode") as "list" | "kanban") ?? "list";
+    }
+    return "list";
+  });
+
+  const setAndPersistViewMode = (mode: "list" | "kanban") => {
+    setViewMode(mode);
+    try { localStorage.setItem("applications-view-mode", mode); } catch { /* ignore */ }
+  };
 
   const {
     applications,
@@ -55,8 +69,23 @@ export default function ApplicationsPage() {
 
   if (loading) {
     return (
-      <div className="flex justify-center py-20">
-        <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="h-8 w-36 animate-pulse rounded bg-slate-200" />
+          <div className="h-9 w-36 animate-pulse rounded-md bg-slate-200" />
+        </div>
+        <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="rounded-xl border bg-white px-4 py-4 shadow-sm space-y-2 animate-pulse">
+              <div className="h-8 w-8 rounded-lg bg-slate-200" />
+              <div className="h-7 w-1/2 rounded bg-slate-200" />
+              <div className="h-3 w-1/3 rounded bg-slate-200" />
+            </div>
+          ))}
+        </div>
+        <div className="flex flex-col gap-3">
+          {[0, 1, 2].map((i) => <SkeletonCard key={i} />)}
+        </div>
       </div>
     );
   }
@@ -119,7 +148,7 @@ export default function ApplicationsPage() {
         <EmptyState />
       ) : (
         <>
-          {/* Search + filter */}
+          {/* Search + filter + view toggle */}
           <div className="flex flex-col sm:flex-row gap-2">
             <input
               type="search"
@@ -138,6 +167,23 @@ export default function ApplicationsPage() {
                 <option key={o.value} value={o.value}>{o.label}</option>
               ))}
             </select>
+            {/* View mode toggle */}
+            <div className="flex gap-1 rounded-lg bg-muted p-1 shrink-0">
+              <button
+                onClick={() => setAndPersistViewMode("list")}
+                title="List view"
+                className={`rounded-md p-1.5 transition-colors ${viewMode === "list" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <List className="h-4 w-4" />
+              </button>
+              <button
+                onClick={() => setAndPersistViewMode("kanban")}
+                title="Kanban view"
+                className={`rounded-md p-1.5 transition-colors ${viewMode === "kanban" ? "bg-white shadow-sm" : "text-muted-foreground hover:text-foreground"}`}
+              >
+                <LayoutGrid className="h-4 w-4" />
+              </button>
+            </div>
           </div>
 
           {filteredApplications.length === 0 ? (
@@ -147,6 +193,8 @@ export default function ApplicationsPage() {
                 Clear filters
               </button>
             </p>
+          ) : viewMode === "kanban" ? (
+            <ApplicationKanban applications={filteredApplications} />
           ) : (
             <>
               {/* Mobile */}

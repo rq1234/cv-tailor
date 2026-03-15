@@ -107,10 +107,10 @@ export default function NavBar() {
                   key={item.href}
                   href={item.href}
                   onClick={() => setMobileOpen(false)}
-                  className={`rounded-md px-3 py-2.5 text-sm font-medium transition-colors ${
+                  className={`rounded-md px-3 py-2.5 text-sm font-medium transition-colors border-l-2 ${
                     isActive
-                      ? "text-blue-600 bg-blue-50"
-                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100"
+                      ? "text-blue-600 bg-blue-50 border-blue-600"
+                      : "text-slate-600 hover:text-slate-900 hover:bg-slate-100 border-transparent"
                   }`}
                 >
                   {item.label}

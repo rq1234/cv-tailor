@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { CoverLetterParts } from "@/hooks/useApplicationsList";
 import { api } from "@/lib/api";
 import { useClickOutside } from "@/hooks/useClickOutside";
+import { Spinner } from "@/components/ui/Skeleton";
 
 interface CoverLetterModalProps {
   text: string | null;
@@ -103,7 +104,7 @@ export default function CoverLetterModal({ text, parts, loading, onClose }: Cove
         <div className="min-h-0 flex-1 overflow-y-auto bg-muted/30 p-6">
           {loading ? (
             <div className="flex items-center justify-center gap-2 py-16 text-sm text-muted-foreground">
-              <div className="h-4 w-4 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <Spinner size="sm" />
               Generating cover letter…
             </div>
           ) : currentParts ? (

@@ -366,7 +366,7 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
                 _orm_to_dict(p, ["name", "description", "bullets"])
                 for p in result.scalars().all()
             ]
-            tailored = await tailor_projects(proj_dicts, state.jd_parsed, rules_text)
+            tailored = await tailor_projects(proj_dicts, state.jd_parsed, rules_text, state.gap_analysis or None)
             state.tailored_projects = [t.model_dump() for t in tailored]
 
         selected_act_ids = state.selection.get("selected_activities", [])
@@ -382,7 +382,7 @@ async def tailor_projects_node(state: PipelineState, db: AsyncSession) -> Pipeli
                 _orm_to_dict(a, ["organization", "role_title", "bullets"])
                 for a in act_result.scalars().all()
             ]
-            tailored_acts = await tailor_activities(act_dicts, state.jd_parsed, rules_text)
+            tailored_acts = await tailor_activities(act_dicts, state.jd_parsed, rules_text, state.gap_analysis or None)
             state.tailored_activities = [t.model_dump() for t in tailored_acts]
     except Exception as e:
         logger.exception("Project/activity tailoring failed for application %s", state.application_id)

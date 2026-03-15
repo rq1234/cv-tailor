@@ -47,7 +47,7 @@ export default function ApplicationStats({ stats }: { stats: AppStats }) {
 
   return (
     <div className="space-y-3">
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+      <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
         {STAT_CARDS.map(({ key, label, icon: Icon, iconClass, valueClass }) => (
           <div
             key={key}

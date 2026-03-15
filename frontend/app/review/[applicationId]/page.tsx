@@ -8,11 +8,24 @@ import ReviewToolbar from "@/components/review/ReviewToolbar";
 import PlaceholderBanner from "@/components/review/PlaceholderBanner";
 import DiffView from "@/components/review/DiffView";
 import PreviewView from "@/components/review/PreviewView";
+import { Download } from "lucide-react";
+import { SkeletonBulletCard } from "@/components/ui/Skeleton";
 
 export default function ReviewPage() {
   const { applicationId } = useParams() as { applicationId: string };
-  const [viewMode, setViewMode] = useState<"diff" | "preview">("diff");
+  const [viewMode, setViewMode] = useState<"diff" | "preview">(() => {
+    if (typeof window !== "undefined") {
+      return (localStorage.getItem("review-view-mode") as "diff" | "preview") ?? "diff";
+    }
+    return "diff";
+  });
+
+  const setAndPersistViewMode = (mode: "diff" | "preview") => {
+    setViewMode(mode);
+    try { localStorage.setItem("review-view-mode", mode); } catch { /* ignore */ }
+  };
   const [focusedBulletIdx, setFocusedBulletIdx] = useState<number | null>(null);
+  const [showStickyBar, setShowStickyBar] = useState(false);
   const autoDownload = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("action") === "download";
   const hasAutoDownloaded = useRef(false);
 
@@ -70,10 +83,25 @@ export default function ReviewPage() {
     }
   }, [autoDownload, loading, result, handleDownloadPdf]);
 
+  // Sticky bar on scroll
+  useEffect(() => {
+    const handleScroll = () => setShowStickyBar(window.scrollY > 120);
+    window.addEventListener("scroll", handleScroll, { passive: true });
+    return () => window.removeEventListener("scroll", handleScroll);
+  }, []);
+
   if (loading) {
     return (
-      <div className="flex items-center justify-center py-20">
-        <div className="h-8 w-8 animate-spin rounded-full border-4 border-primary border-t-transparent" />
+      <div className="space-y-6">
+        {/* Toolbar skeleton */}
+        <div className="space-y-2">
+          <div className="h-3 w-24 animate-pulse rounded bg-slate-200" />
+          <div className="h-8 w-48 animate-pulse rounded bg-slate-200" />
+          <div className="h-3 w-64 animate-pulse rounded bg-slate-200" />
+          <div className="h-1.5 w-72 animate-pulse rounded-full bg-slate-200" />
+        </div>
+        {/* Bullet card skeletons */}
+        {[0, 1].map((i) => <SkeletonBulletCard key={i} />)}
       </div>
     );
   }
@@ -99,6 +127,36 @@ export default function ReviewPage() {
 
   return (
     <div className="space-y-6">
+      {/* Sticky summary bar — slides in on scroll */}
+      <div
+        className={`fixed top-14 left-0 right-0 z-30 border-b bg-white/95 backdrop-blur-sm transition-transform duration-200 ${
+          showStickyBar ? "translate-y-0" : "-translate-y-full"
+        }`}
+      >
+        <div className="mx-auto flex max-w-7xl items-center justify-between gap-4 px-4 py-2">
+          <div className="flex items-center gap-3 text-xs text-slate-500 min-w-0">
+            <span className="font-medium text-slate-700 truncate">{result.company_name}</span>
+            {counts.total > 0 && (
+              <>
+                <span className="text-emerald-600 font-medium">{counts.accepted} ✓</span>
+                <span className="text-red-500 font-medium">{counts.rejected} ✗</span>
+                {counts.pending > 0 && (
+                  <span className="text-orange-500 font-medium">{counts.pending} pending</span>
+                )}
+              </>
+            )}
+          </div>
+          <button
+            onClick={handleDownloadPdf}
+            disabled={saving}
+            className="shrink-0 inline-flex items-center gap-1.5 rounded-md bg-blue-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-blue-700 transition-colors disabled:opacity-50"
+          >
+            <Download className="h-3.5 w-3.5" />
+            {saving ? "Exporting…" : "Download PDF"}
+          </button>
+        </div>
+      </div>
+
       {/* Toolbar: title, back link, bulk actions, export */}
       <ReviewToolbar
         companyName={result.company_name}
@@ -147,7 +205,7 @@ export default function ReviewPage() {
       {/* View mode toggle */}
       <div className="flex gap-1 rounded-lg bg-muted p-1 w-fit">
         <button
-          onClick={() => setViewMode("diff")}
+          onClick={() => setAndPersistViewMode("diff")}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             viewMode === "diff" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
@@ -155,7 +213,7 @@ export default function ReviewPage() {
           Diff View
         </button>
         <button
-          onClick={() => setViewMode("preview")}
+          onClick={() => setAndPersistViewMode("preview")}
           className={`rounded-md px-3 py-1.5 text-sm font-medium transition-colors ${
             viewMode === "preview" ? "bg-white text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground"
           }`}
@@ -192,6 +250,7 @@ export default function ReviewPage() {
           focusedBullet={focusedBullet}
         />
       )}
+
     </div>
   );
 }

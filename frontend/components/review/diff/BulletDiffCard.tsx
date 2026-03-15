@@ -1,4 +1,5 @@
 import { useRef, useState } from "react";
+import { Check, X, Pencil, RefreshCw } from "lucide-react";
 import {
   type BulletState,
   type ExperienceDiff,
@@ -70,18 +71,27 @@ export function BulletDiffCard({
   const [hintInput, setHintInput] = useState("");
   const [showHint, setShowHint] = useState(false);
   const [swipeFlash, setSwipeFlash] = useState<"accept" | "reject" | null>(null);
+  const [clickFlash, setClickFlash] = useState<"accept" | "reject" | null>(null);
+  const [showOriginal, setShowOriginal] = useState(false);
   const touchStartX = useRef<number | null>(null);
+
+  const flashClick = (dir: "accept" | "reject") => {
+    setClickFlash(dir);
+    setTimeout(() => setClickFlash(null), 300);
+  };
 
   const text = bulletText(suggested);
   const hasPlaceholder = bulletHasPlaceholder(suggested);
   const isEditing = bulletState?.decision === "edit";
+  const isAccepted = bulletState?.decision === "accept";
+  const isRejected = bulletState?.decision === "reject";
+  const isPending = !bulletState || bulletState.decision === "pending";
   const displayText = bulletState?.editedText ? bulletState.editedText : text;
   const isChanged = original !== displayText;
   const dropped = droppedMetrics(original, text);
-  const isPending = !bulletState || bulletState.decision === "pending";
   const isRegenerating = regeneratingBullet?.expId === entryId && regeneratingBullet?.idx === idx;
 
-  const SWIPE_THRESHOLD = 80; // px
+  const SWIPE_THRESHOLD = 80;
   const SWIPE_HINT_KEY = "swipe-hint-dismissed";
 
   const handleTouchStart = (e: React.TouchEvent) => {
@@ -92,16 +102,11 @@ export function BulletDiffCard({
     if (touchStartX.current === null) return;
     const delta = e.changedTouches[0].clientX - touchStartX.current;
     touchStartX.current = null;
-
     if (Math.abs(delta) < SWIPE_THRESHOLD) return;
-
     const direction = delta > 0 ? "accept" : "reject";
     setBulletDecision(entryId, idx, direction, bulletState?.editedText);
-
     setSwipeFlash(direction);
     setTimeout(() => setSwipeFlash(null), 400);
-
-    // Dismiss the swipe hint globally on first use
     try { localStorage.setItem(SWIPE_HINT_KEY, "1"); } catch { /* ignore */ }
   };
 
@@ -115,150 +120,177 @@ export function BulletDiffCard({
     }
   };
 
-  const swipeFlashClass = swipeFlash === "accept"
-    ? "bg-green-100 transition-colors duration-300"
-    : swipeFlash === "reject"
-    ? "bg-red-100 transition-colors duration-300"
+  // Outer flash overlay
+  const flashOverlay =
+    swipeFlash === "accept" || clickFlash === "accept"
+      ? "ring-2 ring-inset ring-emerald-300 bg-emerald-50/40"
+      : swipeFlash === "reject" || clickFlash === "reject"
+      ? "ring-2 ring-inset ring-red-300 bg-red-50/40"
+      : "";
+
+  // Row background based on decision
+  const rowBg = isAccepted
+    ? "bg-emerald-50/30"
+    : isRejected
+    ? "bg-red-50/20"
+    : isEditing
+    ? "bg-blue-50/20"
+    : isPending
+    ? "bg-orange-50/20"
     : "";
 
   return (
     <div
       data-bullet-id={`${entryId}-${idx}`}
-      className={`grid grid-cols-1 md:grid-cols-2 gap-0 ${isPending ? "bg-orange-50/30" : ""} ${isFocused ? "ring-2 ring-inset ring-blue-400" : ""} ${swipeFlashClass}`}
+      className={`grid grid-cols-1 md:grid-cols-2 gap-0 transition-colors duration-200 ${rowBg} ${isFocused ? "ring-2 ring-inset ring-blue-400" : ""} ${flashOverlay}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
-      {/* Original */}
-      <div className="border-b md:border-b-0 md:border-r p-3">
-        <div className="text-xs font-medium text-muted-foreground mb-1">Original</div>
-        <p className="text-sm">
-          {original ? <HighlightedText text={original} /> : "(no original)"}
+      {/* Original column */}
+      <div className={`md:border-r border-slate-100 p-4 ${showOriginal ? "border-b md:border-b-0" : "hidden md:block"}`}>
+        <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400 mb-2">Original</p>
+        <p className={`text-sm text-slate-500 leading-relaxed ${isAccepted ? "opacity-50" : ""}`}>
+          {original ? <HighlightedText text={original} /> : <span className="italic">(no original)</span>}
         </p>
       </div>
 
-      {/* Suggested */}
-      <div className="p-3">
-        <div className="flex items-center justify-between mb-1">
-          <div className="flex items-center gap-1.5">
-            <span className="text-xs font-medium text-muted-foreground">Suggested</span>
+      {/* Suggested column */}
+      <div className="p-4">
+        {/* Header: label + decision buttons */}
+        <div className="flex items-center justify-between mb-2.5">
+          <div className="flex items-center gap-2">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-400">Suggested</p>
             {hasPlaceholder && (
-              <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">
+              <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                 Fill in [X]
               </span>
             )}
           </div>
-          <div className="flex gap-1">
+
+          {/* Decision buttons */}
+          <div className="flex items-center gap-1">
             <button
-              onClick={() => setBulletDecision(entryId, idx, "accept", bulletState?.editedText)}
-              className={`rounded px-2 py-0.5 text-xs ${
-                bulletState?.decision === "accept"
-                  ? "bg-green-100 text-green-700"
-                  : "bg-muted text-muted-foreground hover:bg-green-50"
+              onClick={() => { setBulletDecision(entryId, idx, "accept", bulletState?.editedText); flashClick("accept"); }}
+              title="Accept (A)"
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+                isAccepted
+                  ? "bg-emerald-500 text-white shadow-sm"
+                  : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-600"
               }`}
             >
-              Accept
+              <Check className="h-3 w-3" />
+              <span className="hidden sm:inline">Accept</span>
             </button>
             <button
-              onClick={() => setBulletDecision(entryId, idx, "reject", bulletState?.editedText)}
-              className={`rounded px-2 py-0.5 text-xs ${
-                bulletState?.decision === "reject"
-                  ? "bg-red-100 text-red-700"
-                  : "bg-muted text-muted-foreground hover:bg-red-50"
+              onClick={() => { setBulletDecision(entryId, idx, "reject", bulletState?.editedText); flashClick("reject"); }}
+              title="Reject (R)"
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+                isRejected
+                  ? "bg-red-500 text-white shadow-sm"
+                  : "text-slate-400 hover:bg-red-50 hover:text-red-600"
               }`}
             >
-              Reject
+              <X className="h-3 w-3" />
+              <span className="hidden sm:inline">Reject</span>
             </button>
             <button
               onClick={() => setBulletDecision(entryId, idx, "edit", bulletState?.editedText ?? text)}
-              className={`rounded px-2 py-0.5 text-xs ${
-                bulletState?.decision === "edit"
-                  ? "bg-blue-100 text-blue-700"
-                  : "bg-muted text-muted-foreground hover:bg-blue-50"
+              title="Edit (E)"
+              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+                isEditing
+                  ? "bg-blue-500 text-white shadow-sm"
+                  : "text-slate-400 hover:bg-blue-50 hover:text-blue-600"
               }`}
             >
-              Edit
+              <Pencil className="h-3 w-3" />
+              <span className="hidden sm:inline">Edit</span>
             </button>
-            {onRegenerateBullet && (
-              <button
-                onClick={handleRegenerate}
-                disabled={regeneratingBullet !== null}
-                className={`rounded px-2 py-0.5 text-xs disabled:opacity-50 ${
-                  showHint
-                    ? "bg-orange-100 text-orange-700"
-                    : "bg-muted text-muted-foreground hover:bg-orange-50"
-                }`}
-                title={showHint ? "Regenerate with hint (Enter)" : "Get a new AI suggestion"}
-              >
-                {isRegenerating ? "…" : "↻"}
-              </button>
-            )}
           </div>
         </div>
 
-        {/* Hint input */}
-        {onRegenerateBullet && showHint && (
-          <div className="mb-1.5 flex gap-1">
-            <input
-              autoFocus
-              type="text"
-              value={hintInput}
-              onChange={(e) => setHintInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  onRegenerateBullet(entryId, idx, hintInput.trim() || undefined);
-                  setHintInput("");
-                  setShowHint(false);
-                }
-                if (e.key === "Escape") setShowHint(false);
-              }}
-              placeholder="e.g. make shorter, emphasise Python… (Enter to regenerate)"
-              className="flex-1 rounded border border-dashed border-orange-300 bg-orange-50/30 px-2 py-0.5 text-xs text-muted-foreground placeholder:text-muted-foreground/40 focus:border-orange-400 focus:outline-none"
-            />
-            <button
-              onClick={() => setShowHint(false)}
-              className="text-xs text-muted-foreground hover:text-foreground px-1"
-              title="Cancel"
-            >
-              ✕
-            </button>
-          </div>
-        )}
-
+        {/* Bullet text / editor */}
         {isEditing ? (
           <>
             <textarea
               value={bulletState?.editedText || text}
               onChange={(e) => setBulletDecision(entryId, idx, "edit", e.target.value)}
               maxLength={600}
-              className="w-full rounded-md border px-2 py-1 text-sm min-h-[60px]"
+              className="w-full rounded-lg bg-white border border-slate-200 focus:border-blue-300 focus:ring-1 focus:ring-blue-200 px-3 py-2 text-sm text-slate-800 leading-relaxed min-h-[72px] resize-none outline-none transition-colors"
             />
-            {(() => {
-              const len = (bulletState?.editedText || text).length;
-              return (
-                <p className={`text-right text-[10px] mt-0.5 ${len >= 500 ? "text-amber-600 font-medium" : "text-muted-foreground"}`}>
-                  {len}/600
-                </p>
-              );
-            })()}
+            <div className="flex items-center justify-between mt-1.5">
+              {(() => {
+                const len = (bulletState?.editedText || text).length;
+                return (
+                  <p className={`text-[10px] ${len >= 500 ? "text-amber-600 font-medium" : "text-slate-400"}`}>
+                    {len}/600
+                  </p>
+                );
+              })()}
+              {onRegenerateBullet && !showHint && (
+                <button
+                  onClick={() => setShowHint(true)}
+                  disabled={regeneratingBullet !== null}
+                  className="inline-flex items-center gap-1 text-[10px] text-slate-400 hover:text-blue-600 transition-colors disabled:opacity-50"
+                >
+                  <RefreshCw className={`h-2.5 w-2.5 ${isRegenerating ? "animate-spin" : ""}`} />
+                  Regenerate with hint
+                </button>
+              )}
+            </div>
+            {onRegenerateBullet && showHint && (
+              <div className="mt-1.5 flex gap-1">
+                <input
+                  autoFocus
+                  type="text"
+                  value={hintInput}
+                  onChange={(e) => setHintInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter") {
+                      onRegenerateBullet(entryId, idx, hintInput.trim() || undefined);
+                      setHintInput("");
+                      setShowHint(false);
+                    }
+                    if (e.key === "Escape") setShowHint(false);
+                  }}
+                  placeholder="e.g. make shorter, emphasise Python… (Enter)"
+                  className="flex-1 rounded-lg border border-dashed border-blue-200 bg-blue-50/40 px-2.5 py-1 text-xs text-slate-600 placeholder:text-slate-400 focus:border-blue-400 focus:outline-none transition-colors"
+                />
+                <button
+                  onClick={() => setShowHint(false)}
+                  className="text-xs text-slate-400 hover:text-slate-600 px-1 transition-colors"
+                  title="Cancel"
+                >
+                  ✕
+                </button>
+              </div>
+            )}
           </>
         ) : (
           <p
-            className={`text-sm ${
-              bulletState?.decision === "reject"
-                ? "line-through text-muted-foreground"
+            className={`text-sm leading-relaxed transition-all ${
+              isRejected
+                ? "line-through text-slate-400"
+                : isAccepted
+                ? isChanged
+                  ? hasPlaceholder
+                    ? "text-amber-800"
+                    : "text-emerald-800 font-medium"
+                  : "text-slate-700"
                 : isChanged
                 ? hasPlaceholder
                   ? "text-amber-800"
-                  : "text-green-800"
-                : ""
+                  : "text-slate-800"
+                : "text-slate-600"
             }`}
           >
             {displayText}
           </p>
         )}
-        {dropped.length > 0 && bulletState?.decision !== "reject" && (
-          <p className="mt-1.5 text-[11px] text-amber-700 flex items-center gap-1">
-            <span>⚠</span>
+
+        {/* Dropped metrics warning */}
+        {dropped.length > 0 && !isRejected && (
+          <p className="mt-2 text-[11px] text-amber-700 flex items-start gap-1.5">
+            <span className="shrink-0 mt-px">⚠</span>
             <span>
               Not in suggestion:{" "}
               {dropped.map((m, i) => (
@@ -268,6 +300,14 @@ export function BulletDiffCard({
             </span>
           </p>
         )}
+
+        {/* Mobile: show original toggle */}
+        <button
+          onClick={() => setShowOriginal((v) => !v)}
+          className="md:hidden mt-3 text-[11px] text-slate-400 hover:text-slate-600 transition-colors"
+        >
+          {showOriginal ? "Hide original ▴" : "Show original ▾"}
+        </button>
       </div>
     </div>
   );

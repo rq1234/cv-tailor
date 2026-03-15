@@ -27,11 +27,12 @@ from backend.api.db_helpers import (
     fetch_education_data,
     fetch_skills_data,
     find_similar_applications,
+    get_or_404,
 )
 from backend.config import get_settings
 from backend.models.database import get_db
 from backend.models.tables import Activity, Application, CvVersion, Project, WorkExperience
-from backend.schemas.pydantic import AcceptChangesRequest, CvVersionOut, PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
+from backend.schemas.pydantic import AcceptChangesRequest, PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
 
 logger = logging.getLogger(__name__)
 
@@ -244,15 +245,7 @@ async def get_tailor_result(
         raise HTTPException(status_code=404, detail="No tailoring result found")
 
     # Get ATS result from the application
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = app_result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
+    app = await get_or_404(db, Application, application_id, user_id, "Application not found")
 
     # Separate IDs by type from diff_json
     diff = cv_version.diff_json or {}
@@ -313,15 +306,7 @@ async def get_pipeline_status(
     - If pipeline_error is set, the pipeline failed and the user can retry.
     - If pipeline_started_at is recent and neither above, the pipeline is still running.
     """
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = app_result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
+    app = await get_or_404(db, Application, application_id, user_id, "Application not found")
 
     # Get latest CvVersion id if one exists
     cv_result = await db.execute(
@@ -341,35 +326,6 @@ async def get_pipeline_status(
         pipeline_started_at=app.pipeline_started_at,
         cv_version_id=cv_version_id,
     )
-
-
-@router.get("/versions/{application_id}", response_model=list[CvVersionOut])
-async def list_cv_versions(
-    application_id: uuid.UUID,
-    db: AsyncSession = Depends(get_db),
-    user_id: uuid.UUID = Depends(get_current_user),
-):
-    """Return the last 10 CV versions for an application, newest first."""
-    # Verify ownership
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    if not app_result.scalar_one_or_none():
-        raise HTTPException(status_code=404, detail="Application not found")
-
-    versions_result = await db.execute(
-        select(CvVersion)
-        .where(
-            CvVersion.application_id == application_id,
-            CvVersion.user_id == user_id,
-        )
-        .order_by(CvVersion.created_at.desc())
-        .limit(10)
-    )
-    return versions_result.scalars().all()
 
 
 @router.put("/cv-versions/{version_id}/accept-changes")
@@ -483,15 +439,7 @@ async def re_tailor_application(
     the existing selected experiences/projects/activities.
     """
     # Get application
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = app_result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
+    app = await get_or_404(db, Application, application_id, user_id, "Application not found")
 
     if not app.jd_parsed:
         raise HTTPException(status_code=400, detail="Application has no parsed JD")
@@ -655,15 +603,7 @@ async def regenerate_bullet(
     Does not persist the result — the frontend patches its local state.
     """
     # 1. Fetch application (ownership check + jd_parsed)
-    app_result = await db.execute(
-        select(Application).where(
-            Application.id == body.application_id,
-            Application.user_id == user_id,
-        )
-    )
-    app = app_result.scalar_one_or_none()
-    if not app:
-        raise HTTPException(status_code=404, detail="Application not found")
+    app = await get_or_404(db, Application, body.application_id, user_id, "Application not found")
     if not app.jd_parsed:
         raise HTTPException(status_code=400, detail="Application has no parsed JD")
 

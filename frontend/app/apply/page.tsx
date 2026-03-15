@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
 import { useApplication } from "@/hooks/useApplication";
 import { useExperiencePool } from "@/hooks/useExperiencePool";
 import { useApplyStream } from "@/hooks/useApplyStream";
@@ -9,11 +10,32 @@ import PipelineProgress from "@/components/apply/PipelineProgress";
 import ExperienceSelectStep, { type PoolSelection } from "@/components/apply/ExperienceSelectStep";
 import { usePipelineNotification } from "@/hooks/usePipelineNotification";
 import { OnboardingBanner } from "@/components/onboarding/OnboardingBanner";
+import { Spinner } from "@/components/ui/Skeleton";
+import Link from "next/link";
 
 export default function ApplyPage() {
+  const router = useRouter();
   const { createApplication, loading, error: createApplicationError } = useApplication();
   const { pool, poolLoading, fetchPool } = useExperiencePool();
-  const { tailoring, pipelineSteps, pipelineError, startStream, resetStream } = useApplyStream();
+  const { tailoring, pipelineSteps, pipelineError, completedApplicationId, startStream, resetStream } = useApplyStream();
+
+  const [countdown, setCountdown] = useState<number | null>(null);
+
+  // Countdown redirect when pipeline completes
+  useEffect(() => {
+    if (!completedApplicationId) return;
+    setCountdown(3);
+  }, [completedApplicationId]);
+
+  useEffect(() => {
+    if (countdown === null || !completedApplicationId) return;
+    if (countdown === 0) {
+      router.push(`/review/${completedApplicationId}`);
+      return;
+    }
+    const t = setTimeout(() => setCountdown((c) => (c !== null ? c - 1 : null)), 1000);
+    return () => clearTimeout(t);
+  }, [countdown, completedApplicationId, router]);
 
   const [step, setStep] = useState(1);
   // Pre-fill from ?company= and ?role= query params (e.g. when cloning an application)
@@ -185,7 +207,7 @@ export default function ApplyPage() {
 
           {poolLoading || !pool ? (
             <div className="flex flex-col items-center justify-center py-16 gap-3">
-              <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+              <Spinner size="md" />
               <p className="text-sm text-muted-foreground">Loading your experience pool...</p>
             </div>
           ) : (
@@ -201,14 +223,38 @@ export default function ApplyPage() {
 
       {/* Step 3: Pipeline Progress */}
       {step === 3 && (
-        <PipelineProgress
-          steps={pipelineSteps}
-          error={pipelineError}
-          onRetry={() => {
-            setStep(2);
-            resetStream();
-          }}
-        />
+        <>
+          {/* Completion countdown banner */}
+          {completedApplicationId && countdown !== null && (
+            <div className="flex items-center justify-between gap-4 rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+              <span className="flex-1">
+                Tailoring complete — taking you to review in <strong>{countdown}s</strong>
+              </span>
+              <div className="flex items-center gap-2 shrink-0">
+                <Link
+                  href={`/review/${completedApplicationId}`}
+                  className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors"
+                >
+                  Go now
+                </Link>
+                <button
+                  onClick={() => setCountdown(null)}
+                  className="rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
+                >
+                  Stay here
+                </button>
+              </div>
+            </div>
+          )}
+          <PipelineProgress
+            steps={pipelineSteps}
+            error={pipelineError}
+            onRetry={() => {
+              setStep(2);
+              resetStream();
+            }}
+          />
+        </>
       )}
     </div>
   );
