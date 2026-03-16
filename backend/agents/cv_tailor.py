@@ -104,7 +104,6 @@ class BulletBrief(NamedTuple):
     requirement: str   # the specific JD requirement this bullet should target
     approach: str      # what to change and why, in natural editor voice
     keep_original: bool = False  # Tier 1 — no JD relevance, return unchanged
-    similarity_threshold: float = 0.78  # reject output if too similar to original (lower = stricter)
     exp_context: str = ""  # e.g. "Software Engineer at Google" — shown to LLM for context
 
 
@@ -163,7 +162,6 @@ async def _tailor_one_bullet(
                 max_tokens=220,
             )
 
-            orig_norm = original.lower().strip().rstrip(".")
             valid: list[str] = []
             for choice in response.choices:
                 result = (
@@ -173,14 +171,12 @@ async def _tailor_one_bullet(
                     .lstrip("- ")
                     .strip()
                 )
-                res_norm = result.lower().strip().rstrip(".")
                 if (
                     result
                     and not _has_lost_tech_terms(original, result)
                     and not _has_hallucinated_numbers(original, result)
                     and not _BANNED_PHRASE_RE.search(result)
                     and not _is_over_compressed(original, result)
-                    and _similarity(orig_norm, res_norm) <= brief.similarity_threshold
                 ):
                     valid.append(result)
 
@@ -974,7 +970,6 @@ def _build_bullet_briefs(
                 requirement=req,
                 approach=approach,
                 exp_context=exp_context,
-                similarity_threshold=0.90,
             ))
 
     return briefs

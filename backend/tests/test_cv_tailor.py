@@ -436,18 +436,6 @@ class TestBuildBulletBriefs:
         if not b.keep_original and "Black-Scholes" in b.approach:
             pytest.fail("Unrelated domain keyword injected into brief")
 
-    def test_tier5_light_reframe_similarity_threshold(self, jd_tech):
-        """Tier 5 brief should have relaxed similarity threshold (0.90)."""
-        # Bullet that already contains JD keywords, no structural issues, no gap match
-        bullet = "Implemented Python FastAPI REST API for backend microservices with PostgreSQL"
-        bullets = [bullet]
-        briefs = _build_bullet_briefs(bullets, None, jd_tech)
-        b = briefs[0]
-        if not b.keep_original:
-            # If it ends up in Tier 5 (no weakness, no gap, no missing kw), threshold=0.90
-            # Hard to force exact tier but check the threshold is at least not default strict
-            assert b.similarity_threshold >= 0.78
-
     def test_tier5_present_keyword_move_to_front(self, jd_tech):
         """Tier 5 with present keyword should say 'Move X to open'."""
         # Well-structured bullet with keywords, no gaps → Tier 5
@@ -573,21 +561,6 @@ class TestTailorOneBullet:
         brief = BulletBrief(requirement="Build APIs", approach="Improve")
         result = await _tailor_one_bullet(original, brief, "Role", client, _make_settings())
         assert result == original
-
-    @pytest.mark.asyncio
-    async def test_similarity_threshold_tier5(self):
-        """Tier 5 brief (threshold=0.90) accepts output that is ~85% similar — would fail at 0.78."""
-        original = "Implemented Python FastAPI REST API for backend services with PostgreSQL"
-        # ~85% similar — accepted at 0.90 threshold, rejected at default 0.78
-        close_rewrite = "Developed Python FastAPI REST API for backend services using PostgreSQL"
-        client = _make_async_client(close_rewrite, close_rewrite)
-        brief = BulletBrief(
-            requirement="Build APIs",
-            approach="Move keyword to front",
-            similarity_threshold=0.90,  # Tier 5 relaxed threshold
-        )
-        result = await _tailor_one_bullet(original, brief, "Role", client, _make_settings())
-        assert result == close_rewrite  # accepted because threshold=0.90
 
     @pytest.mark.asyncio
     async def test_domain_guidance_included_in_system_prompt(self, jd_quant):
