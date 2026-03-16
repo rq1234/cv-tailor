@@ -1,8 +1,8 @@
 /**
  * Typed fetch wrapper for FastAPI backend.
  *
- * Automatically retries on network errors (e.g. Render cold-start connection
- * refused) with exponential backoff before surfacing an error to the caller.
+ * Automatically retries on network errors with exponential backoff before
+ * surfacing an error to the caller.
  */
 
 import { supabase } from "@/lib/supabase";

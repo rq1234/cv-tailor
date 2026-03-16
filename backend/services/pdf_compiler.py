@@ -1,7 +1,7 @@
 """Server-side LaTeX → PDF compilation using Tectonic.
 
 Tectonic is a single-binary LaTeX engine that downloads packages on demand
-from CTAN and caches them locally. Install on Render via the build command.
+from CTAN and caches them locally.
 """
 
 from __future__ import annotations
@@ -13,8 +13,7 @@ from pathlib import Path
 
 logger = logging.getLogger(__name__)
 
-# First compile downloads packages (~20s). Subsequent compiles on same dyno
-# use the local cache and finish in ~3-5s.
+# First compile downloads packages (~20s). Subsequent compiles use the local cache (~3-5s).
 _TIMEOUT_SECONDS = 120
 
 
@@ -41,7 +40,7 @@ async def compile_latex_to_pdf(latex_content: str) -> bytes:
         except FileNotFoundError:
             raise FileNotFoundError(
                 "Tectonic is not installed on this server. "
-                "Add tectonic to the Render build command to enable PDF export."
+                "Ensure tectonic is available in the container image to enable PDF export."
             )
 
         try:
