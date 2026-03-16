@@ -7,9 +7,8 @@ function makeInitialDecisions(data: TailorResult): Record<string, Record<number,
   const initial: Record<string, Record<number, BulletState>> = {};
   for (const [expId, diff] of Object.entries(data.diff_json || {})) {
     initial[expId] = {};
-    const autoAccept = diff.confidence >= 0.75;
     for (let i = 0; i < diff.suggested_bullets.length; i++) {
-      initial[expId][i] = { decision: autoAccept ? "accept" : "pending" };
+      initial[expId][i] = { decision: "accept" };
     }
   }
   return initial;

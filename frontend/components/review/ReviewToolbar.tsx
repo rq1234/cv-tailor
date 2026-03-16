@@ -12,7 +12,6 @@ import {
   ChevronDown,
   ExternalLink,
   FileText,
-  CheckCircle2,
   MoreHorizontal,
 } from "lucide-react";
 
@@ -90,35 +89,14 @@ export default function ReviewToolbar({
           )}
           <p className="text-xs text-slate-400 mt-1">
             {counts.total} suggestions &mdash;{" "}
-            <span className="text-emerald-600 font-medium">{counts.accepted} accepted</span>,{" "}
-            <span className="text-red-500 font-medium">{counts.rejected} rejected</span>,{" "}
-            <span className="text-amber-600 font-medium">{counts.edited} edited</span>
-            {counts.pending > 0 && (
-              <>, <span className="text-orange-500 font-medium">{counts.pending} pending review</span></>
+            <span className="text-emerald-600 font-medium">{counts.accepted + counts.pending} using AI</span>
+            {counts.rejected > 0 && (
+              <>, <span className="text-slate-500 font-medium">{counts.rejected} reverted</span></>
+            )}
+            {counts.edited > 0 && (
+              <>, <span className="text-amber-600 font-medium">{counts.edited} edited</span></>
             )}
           </p>
-          {/* Progress bar */}
-          {counts.total > 0 && (() => {
-            const pct = Math.round(((counts.total - counts.pending) / counts.total) * 100);
-            const allDone = counts.pending === 0;
-            return (
-              <div className="mt-2 flex items-center gap-2">
-                <div className="h-1 flex-1 max-w-sm rounded-full bg-muted overflow-hidden">
-                  <div
-                    className={`h-1 rounded-full transition-all duration-500 ${allDone ? "bg-emerald-500" : "bg-primary"}`}
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                {allDone ? (
-                  <span className="inline-flex items-center gap-1 text-xs font-medium text-emerald-600">
-                    <CheckCircle2 className="h-3.5 w-3.5" /> All reviewed
-                  </span>
-                ) : (
-                  <span className="text-xs text-slate-400">{pct}%</span>
-                )}
-              </div>
-            );
-          })()}
         </div>
 
         {/* Action buttons */}

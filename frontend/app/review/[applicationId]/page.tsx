@@ -8,7 +8,7 @@ import ReviewToolbar from "@/components/review/ReviewToolbar";
 import PlaceholderBanner from "@/components/review/PlaceholderBanner";
 import DiffView from "@/components/review/DiffView";
 import PreviewView from "@/components/review/PreviewView";
-import { Download, CheckCircle2 } from "lucide-react";
+import { Download } from "lucide-react";
 import { SkeletonBulletCard } from "@/components/ui/Skeleton";
 
 export default function ReviewPage() {
@@ -138,11 +138,9 @@ export default function ReviewPage() {
             <span className="font-medium text-slate-700 truncate">{result.company_name}</span>
             {counts.total > 0 && (
               <>
-                <span className="text-emerald-600 font-medium">{counts.accepted} ✓</span>
-                <span className="text-red-500 font-medium">{counts.rejected} ✗</span>
-                {counts.pending > 0 && (
-                  <span className="text-orange-500 font-medium">{counts.pending} pending</span>
-                )}
+                <span className="text-emerald-600 font-medium">{counts.accepted + counts.pending} using AI</span>
+                {counts.rejected > 0 && <span className="text-slate-500 font-medium">{counts.rejected} reverted</span>}
+                {counts.edited > 0 && <span className="text-amber-600 font-medium">{counts.edited} edited</span>}
               </>
             )}
           </div>
@@ -199,34 +197,6 @@ export default function ReviewPage() {
         <div className="flex items-center justify-between rounded-md border border-red-200 bg-red-50 px-4 py-3 text-sm text-red-700">
           <span>{exportError}</span>
           <button onClick={clearExportError} className="text-red-400 hover:text-red-600" aria-label="Dismiss">✕</button>
-        </div>
-      )}
-
-      {/* All done CTA — shown when every bullet has a decision */}
-      {counts.total > 0 && counts.pending === 0 && (
-        <div className="flex items-center justify-between rounded-xl border border-emerald-200 bg-emerald-50/80 px-5 py-4 gap-3 flex-wrap shadow-sm">
-          <div className="flex items-center gap-2.5">
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-emerald-600" />
-            <span className="text-base font-semibold text-emerald-800">
-              All {counts.total} bullets reviewed — ready to export
-            </span>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              onClick={handleDownloadPdf}
-              disabled={saving}
-              className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-3 py-1.5 text-xs font-semibold text-white hover:bg-emerald-700 transition-colors disabled:opacity-50 shadow-sm shadow-emerald-300/30"
-            >
-              <Download className="h-3.5 w-3.5" />
-              {saving ? "Exporting…" : "Download PDF"}
-            </button>
-            <a
-              href="/apply"
-              className="inline-flex items-center gap-1 rounded-md border border-emerald-300 px-3 py-1.5 text-xs font-medium text-emerald-700 hover:bg-emerald-100 transition-colors"
-            >
-              New application →
-            </a>
-          </div>
         </div>
       )}
 
