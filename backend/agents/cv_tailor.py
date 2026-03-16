@@ -453,15 +453,10 @@ def _compute_experience_focus(
     return ownership
 
 
-_REWRITE_THRESHOLD = 0.12    # below this → keep original (no honest reframe possible)
-_FULL_TAILOR_THRESHOLD = 0.25  # below this but above rewrite → structure-fix only, no domain injection
-
-
 def _jd_relevance_score(bullet: str, jd_parsed: dict) -> float:
     """Score how relevant a bullet is to the JD (0–1, keyword overlap ratio).
 
-    Uses required_skills + keywords as the pool. A score of 0.12 on a 16-keyword
-    JD means the bullet mentions ≤1 JD keyword — effectively irrelevant.
+    Uses required_skills + keywords as the pool.
     """
     pool = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     if not pool:
@@ -537,7 +532,6 @@ def _build_bullet_briefs(
 
     briefs: list[BulletBrief] = []
     for idx, bullet in enumerate(bullets):
-        score = _jd_relevance_score(bullet, jd_parsed)
         weakness = weakness_map.get(idx)
         apr = apr_map.get(idx, {})
         redundant_of = redundant_map.get(idx)
@@ -552,12 +546,8 @@ def _build_bullet_briefs(
             if sibling_covered else ""
         )
 
-        # ── Tier 1: Keep original ─────────────────────────────────────────────
-        if score < _REWRITE_THRESHOLD:
-            briefs.append(BulletBrief(requirement="", approach="", keep_original=True, exp_context=exp_context))
-
         # ── Tier 1b: Redundant ────────────────────────────────────────────────
-        elif redundant_of is not None:
+        if redundant_of is not None:
             req = _best_req(jd_parsed, bullet, focus=req_pool)
             approach = (
                 f"This bullet covers the same ground as bullet #{redundant_of + 1}. "
@@ -579,28 +569,18 @@ def _build_bullet_briefs(
                 missing_apr.append("outcome/result — add [X%] placeholder if metric unknown")
             apr_note = f" Missing: {', '.join(missing_apr)}." if missing_apr else ""
 
-            if score < _FULL_TAILOR_THRESHOLD:
-                approach = (
-                    f"This bullet has weak structure ({weakness}).{apr_note} "
-                    f"Rewrite with a strong action verb and a clear achievement. "
-                    f"Keep the original domain and context — do not introduce keywords "
-                    f"from unrelated fields.{sibling_note}"
-                    + rules_suffix
-                )
-            else:
-                missing_kws = [kw for kw in priority_keywords[:8] if not _keyword_in_text(kw, bullet)][:3]
-                missing_kw_note = f" Weave in: {', '.join(missing_kws)}." if missing_kws else ""
-                approach = (
-                    f"This bullet has weak structure ({weakness}).{apr_note} "
-                    f"Rewrite from scratch — strong action verb, achievement-oriented.{missing_kw_note}{sibling_note}"
-                    + rules_suffix
-                )
+            missing_kws = [kw for kw in priority_keywords[:8] if not _keyword_in_text(kw, bullet)][:3]
+            missing_kw_note = f" Weave in naturally: {', '.join(missing_kws)}." if missing_kws else ""
+            approach = (
+                f"This bullet has weak structure ({weakness}).{apr_note} "
+                f"Rewrite from scratch — strong action verb, achievement-oriented.{missing_kw_note}{sibling_note}"
+                + rules_suffix
+            )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
         # ── Tier 3: Gap-analysis framing ─────────────────────────────────────
-        elif bullet in bullet_to_framings and score >= _FULL_TAILOR_THRESHOLD:
+        elif bullet in bullet_to_framings:
             req, framing, evidence_quote = bullet_to_framings[bullet][0]
-            # Anchor the LLM with the exact phrase from gap analysis
             evidence_note = (
                 f"\nEvidence identified in your CV: \"{evidence_quote.strip()}\""
                 if evidence_quote and 20 < len(evidence_quote) < 250
@@ -626,9 +606,19 @@ def _build_bullet_briefs(
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
-        # ── Tier 5: Already well-targeted — keep original ────────────────────
+        # ── Tier 5: Surface transferable skills (was: keep original) ─────────
         else:
-            briefs.append(BulletBrief(requirement="", approach="", keep_original=True, exp_context=exp_context))
+            req = _best_req(jd_parsed, bullet, focus=req_pool)
+            domain = jd_parsed.get("domain", "the target role")
+            approach = (
+                f"Surface transferable skills for this role. "
+                f"Strengthen structure: action verb → what you did → tools/context → result. "
+                f"Do NOT inject {domain}-specific keywords not already in the original — "
+                f"keep the candidate's actual domain context. "
+                f"Add [X%] placeholder if an outcome is implied but unquantified."
+                f"{sibling_note}" + rules_suffix
+            )
+            briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
     return briefs
 
