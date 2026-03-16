@@ -26,8 +26,6 @@ from backend.agents.cv_tailor import (
     _find_redundant_pairs,
     _get_seniority_note,
     _has_hallucinated_numbers,
-    _has_lost_tech_terms,
-    _is_over_compressed,
     _jd_relevance_score,
     _keyword_in_text,
     _score_bullet_candidate,
@@ -858,27 +856,6 @@ class TestEdgeCases:
         orig = "Built Python service for data processing"
         sug = "Built Python service processing 50,000 requests per day"
         assert _has_hallucinated_numbers(orig, sug)
-
-    def test_has_lost_tech_terms_false_when_all_present(self):
-        orig = "Built FastAPI service with PostgreSQL database"
-        sug = "Engineered FastAPI microservice with PostgreSQL for backend"
-        assert not _has_lost_tech_terms(orig, sug)
-
-    def test_has_lost_tech_terms_true_when_dropped(self):
-        orig = "Built FastAPI service with PostgreSQL database"
-        sug = "Engineered microservice for backend data storage"
-        assert _has_lost_tech_terms(orig, sug)
-
-    def test_is_over_compressed_short_originals_exempt(self):
-        """Short originals (<70 chars) should not be flagged as over-compressed."""
-        orig = "Built Python API"  # 16 chars
-        sug = "Built API"
-        assert not _is_over_compressed(orig, sug)
-
-    def test_is_over_compressed_detects_long_truncations(self):
-        orig = "Built Python FastAPI microservices handling 10K RPM reducing backend API latency by 40%"
-        sug = "Built API"
-        assert _is_over_compressed(orig, sug)
 
     def test_bullet_weakness_detects_passive_start(self):
         assert _bullet_weakness("Responsible for building Python services") is not None

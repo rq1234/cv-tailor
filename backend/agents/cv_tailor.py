@@ -14,36 +14,6 @@ _NUMBER_RE = re.compile(
     re.IGNORECASE,
 )
 
-_BANNED_PHRASE_RE = re.compile(
-    r"\b(?:"
-    # Self-congratulatory meta-phrases
-    r"showcasing|showcases"
-    r"|demonstrating\s+(?:strong\s+)?(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency|understanding|knowledge|capabilities?)"
-    r"|highlighting\s+(?:\w+\s+){0,3}(?:skills?|abilities?|expertise|proficiency)"
-    r"|leveraging expertise"
-    r"|leveraging\s+(?:strong\s+)?(?:\w+\s+){0,2}(?:skills?|abilities?|expertise)"
-    r"|advancing\s+\w+(?:\s+\w+)?\s+techniques?"
-    r"|exceptional\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?|qualities)"
-    r"|strong\s+\w+(?:\s+\w+)?\s+(?:skills?|abilities?)\s*[,.]?\s*$"
-    # Trailing justification phrases — bullet should BE relevant, not explain why
-    r"|akin\s+to\b"
-    r"|involving\s+both\b"
-    r"|aligning\s+with\b"
-    r"|in\s+line\s+with\b"
-    r"|to\s+support\s+(?:business|team|organizational|company|client)\s+(?:objectives?|goals?|needs?|requirements?)"
-    r"|to\s+meet\s+(?:business|team|client|project)\s+(?:objectives?|goals?|needs?|requirements?)"
-    r"|(?:both\s+)?technical\s+(?:and\s+)?\w+\s+(?:development|skills?|understanding)\b"
-    r")",
-    re.IGNORECASE,
-)
-
-# Matches CamelCase tokens, pure acronyms, and letter+digit combos (e.g. EC2, S3).
-# Used to detect when the model silently drops a tech term from a bullet.
-_TECH_TOKEN_RE = re.compile(
-    r"\b(?:[A-Z][A-Za-z0-9]*[A-Z][A-Za-z0-9]*|[A-Z]{2,}\d*|[A-Z]\d+\w*)\b"
-)
-
-
 def _extract_numbers(text: str) -> set[str]:
     return set(_NUMBER_RE.findall(text))
 
@@ -52,26 +22,6 @@ def _has_hallucinated_numbers(original: str, suggested: str) -> bool:
     """True if suggested introduces numbers not present in original."""
     return bool(_extract_numbers(suggested) - _extract_numbers(original))
 
-
-def _has_lost_tech_terms(original: str, suggested: str) -> bool:
-    """True if suggestion drops CamelCase or acronym tech terms that were in original."""
-    orig_tokens = set(_TECH_TOKEN_RE.findall(original))
-    if not orig_tokens:
-        return False
-    sugg_tokens = set(_TECH_TOKEN_RE.findall(suggested))
-    return bool(orig_tokens - sugg_tokens)
-
-
-def _is_over_compressed(original: str, suggested: str, threshold: float = 0.80) -> bool:
-    """True if suggestion is ≥20% shorter than original (technical detail likely dropped).
-
-    Short originals (<70 chars) are excluded — there's not much detail to lose.
-    """
-    orig_len = len(original.strip())
-    if orig_len < 70:
-        return False
-    sugg_len = len(suggested.strip())
-    return sugg_len < orig_len * threshold
 
 from pydantic import BaseModel, Field
 
@@ -250,246 +200,6 @@ class TailorProjectsOutput(BaseModel):
     tailored_projects: list[TailoredProject]
 
 
-async def _expand_short_bullet(
-    original: str,
-    suggested: TailoredBullet,
-    jd_summary: str,
-) -> TailoredBullet:
-    """Expand bullets under 100 chars by restoring detail from the original."""
-    if len(suggested.text) >= 100:
-        return suggested
-
-    if suggested.has_placeholder and "[X]" not in suggested.text:
-        return suggested
-
-    system_prompt = (
-        "You expand a CV bullet to 120-170 characters. "
-        "Restore important details from the original bullet that were lost (especially technologies, metrics, achievements, and scope). "
-        "Do not invent new facts. "
-        "If the bullet contains [X], keep it. "
-        "Return only the revised bullet text."
-    )
-    user_message = (
-        "Original bullet (may have important details that were dropped):\n"
-        f"{original}\n\n"
-        "Current bullet (too short — missing detail):\n"
-        f"{suggested.text}\n\n"
-        "Job context:\n"
-        f"{jd_summary}\n\n"
-        "Expand the current bullet to 120-170 characters, restoring important technologies, metrics, and achievements from the original."
-    )
-
-    _client = get_openai_client()
-    _settings = get_settings()
-    response = await _client.chat.completions.create(
-        model=_settings.model_mini,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=_settings.temp_gap_analysis,
-    )
-
-    text = (response.choices[0].message.content or "").strip().replace("\n", " ")
-    if not text:
-        return suggested
-
-    # Accept anything in the 100-200 range
-    if len(text) < 100 or len(text) > 200:
-        return suggested
-
-    if suggested.has_placeholder and "[X]" not in text:
-        return suggested
-
-    return TailoredBullet(
-        text=text,
-        has_placeholder="[X]" in text,
-        outcome_type=suggested.outcome_type,
-    )
-
-
-async def _trim_just_over_line(
-    original: str,
-    suggested: TailoredBullet,
-    jd_summary: str,
-    target_length: int = 95,
-) -> TailoredBullet:
-    """Optimize bullets that are just slightly over one line (105-145 chars).
-    
-    LaTeX CV with \\small font fits ~90-100 chars per line. Bullets 105-145 chars
-    waste half a line. Try to trim them to fit on one line without losing key info.
-    """
-    text_len = len(suggested.text)
-    if text_len < 95 or text_len > 135:
-        return suggested
-
-    system_prompt = (
-        f"You optimize a CV bullet to fit on ONE line (~{target_length} chars max). "
-        "The bullet currently wastes half a line. Try to trim it smartly to ~95-100 chars. "
-        "RULES: "
-        "1. NEVER remove named technologies (e.g. AWS S3, React, PostgreSQL, XGBoost). "
-        "2. NEVER remove numbers, percentages, or metrics (e.g. 10,000+, 40%, $800K). "
-        "3. NEVER remove outcomes (e.g. 'reducing by 30%', 'improving accuracy'). "
-        "4. Cut ONLY filler words: 'utilized'→'used', 'in order to'→'to', 'leveraging'→'via'. "
-        "5. Collapse phrases: 'built and deployed'→'deployed', 'developed and implemented'→'implemented'. "
-        "6. If the bullet contains [X], keep it. "
-        "7. If you can't trim it safely without losing key info, return it UNCHANGED. "
-        "Return only the revised bullet text."
-    )
-    user_message = (
-        "Original bullet:\n"
-        f"{original}\n\n"
-        "Current bullet (wasting half a line — slightly too long):\n"
-        f"{suggested.text}\n\n"
-        f"Length: {text_len} chars (target: ~95 to fit one line)\n\n"
-        "Job context:\n"
-        f"{jd_summary}\n\n"
-        f"Trim to ~95 characters if possible. Keep ALL technologies, numbers, and outcomes. "
-        "If you can't trim safely, return the bullet UNCHANGED."
-    )
-
-    _client = get_openai_client()
-    _settings = get_settings()
-    response = await _client.chat.completions.create(
-        model=_settings.model_mini,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=_settings.temp_gap_analysis,
-    )
-
-    text = (response.choices[0].message.content or "").strip().replace("\n", " ")
-    if not text:
-        return suggested
-
-    # Accept if it's shorter and still reasonable (80+ chars), or if model returned unchanged
-    if text == suggested.text:
-        return suggested
-    if len(text) < 80 or len(text) > 140:
-        return suggested
-
-    if suggested.has_placeholder and "[X]" not in text:
-        return suggested
-
-    return TailoredBullet(
-        text=text,
-        has_placeholder="[X]" in text,
-        outcome_type=suggested.outcome_type,
-    )
-
-
-async def _trim_long_bullet(
-    original: str,
-    suggested: TailoredBullet,
-    jd_summary: str,
-) -> TailoredBullet:
-    """Condense a bullet that exceeds 200 characters. Only trims truly long bullets."""
-    if len(suggested.text) <= 200:
-        return suggested
-
-    system_prompt = (
-        "You condense a CV bullet to 140-190 characters. "
-        "RULES: "
-        "1. NEVER remove named technologies (e.g. AWS S3, React, PostgreSQL, XGBoost). "
-        "2. NEVER remove numbers, percentages, or metrics (e.g. 10,000+, 40%, $800K). "
-        "3. NEVER remove achievements or outcomes (e.g. 'achieved top 5', 'reducing by 30%'). "
-        "4. Cut ONLY filler words: 'utilized'→'used', 'in order to'→'to', 'leveraged'→'used'. "
-        "5. If the bullet contains [X], keep it. "
-        "Return only the revised bullet text."
-    )
-    user_message = (
-        "Original bullet:\n"
-        f"{original}\n\n"
-        "Current bullet (too long, needs trimming):\n"
-        f"{suggested.text}\n\n"
-        "Job context:\n"
-        f"{jd_summary}\n\n"
-        "Condense to 140-190 characters. Keep ALL technologies, numbers, and achievements."
-    )
-
-    _client = get_openai_client()
-    _settings = get_settings()
-    response = await _client.chat.completions.create(
-        model=_settings.model_mini,
-        messages=[
-            {"role": "system", "content": system_prompt},
-            {"role": "user", "content": user_message},
-        ],
-        temperature=_settings.temp_gap_analysis,
-    )
-
-    text = (response.choices[0].message.content or "").strip().replace("\n", " ")
-    if not text:
-        return suggested
-
-    # Accept anything in the 100-200 range
-    if len(text) < 100 or len(text) > 200:
-        return suggested
-
-    if suggested.has_placeholder and "[X]" not in text:
-        return suggested
-
-    return TailoredBullet(
-        text=text,
-        has_placeholder="[X]" in text,
-        outcome_type=suggested.outcome_type,
-    )
-
-
-def _build_jd_summary(jd_parsed: dict) -> str:
-    """Build a compact JD context string used in all tailoring prompts."""
-    key_responsibilities = jd_parsed.get("key_responsibilities", [])
-    return f"""
-Role: {jd_parsed.get('role_summary', 'N/A')}
-Domain: {jd_parsed.get('domain', 'N/A')}
-Seniority: {jd_parsed.get('seniority_level', 'N/A')}
-Key Responsibilities: {'; '.join(key_responsibilities) if key_responsibilities else 'N/A'}
-Required Skills: {', '.join(jd_parsed.get('required_skills', []))}
-Nice to Have: {', '.join(jd_parsed.get('nice_to_have_skills', []))}
-Keywords: {', '.join(jd_parsed.get('keywords', []))}
-Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
-"""
-
-
-def _recompute_confidence(tailored_list: list) -> None:
-    """Recompute confidence for each entry based on final suggested texts vs originals."""
-    for entry in tailored_list:
-        n = len(entry.original_bullets)
-        if not n:
-            entry.confidence = 0.5
-            continue
-        changed = sum(
-            1 for o, s in zip(entry.original_bullets, entry.suggested_bullets)
-            if o.strip() != s.text.strip()
-        )
-        entry.confidence = round(changed / n, 2)
-
-
-async def _apply_length_refinements(
-    tailored_list: list,
-    jd_summary: str,
-) -> None:
-    """Run trim/expand corrections on truly short (<60 chars) or very long (>200 chars) bullets."""
-    pending: list[tuple[int, int, object]] = []
-    for ei, entry in enumerate(tailored_list):
-        for bi, (orig, suggested) in enumerate(
-            zip(entry.original_bullets, entry.suggested_bullets)
-        ):
-            if len(suggested.text) < 60:
-                coro = _expand_short_bullet(orig, suggested, jd_summary)
-            elif len(suggested.text) > 200:
-                coro = _trim_long_bullet(orig, suggested, jd_summary)
-            else:
-                continue
-            pending.append((ei, bi, coro))
-
-    if not pending:
-        return
-
-    results = await asyncio.gather(*[t[2] for t in pending])
-    for (ei, bi, _), result in zip(pending, results):
-        tailored_list[ei].suggested_bullets[bi] = result
 
 
 
@@ -571,28 +281,6 @@ def _score_keyword_fit(keyword: str, bullet: str) -> int:
     kw_words = set(_expand(keyword).split())
     bullet_words = set(_expand(bullet).split())
     return len(kw_words & bullet_words)
-
-
-def _reorder_bullets_by_relevance(
-    tailored_list: list,
-    priority_keywords: list[str],
-) -> None:
-    """Sort bullet pairs within each entry by JD keyword match score (descending).
-
-    Keeps original_bullets and suggested_bullets in sync so pairs stay intact.
-    The most JD-relevant bullet moves to position 0, which is what ATS parsers
-    and recruiters read first.
-    """
-    for entry in tailored_list:
-        if len(entry.suggested_bullets) <= 1:
-            continue
-        scores = [
-            sum(1 for kw in priority_keywords if _keyword_in_text(kw, sug.text))
-            for sug in entry.suggested_bullets
-        ]
-        order = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
-        entry.original_bullets = [entry.original_bullets[i] for i in order]
-        entry.suggested_bullets = [entry.suggested_bullets[i] for i in order]
 
 
 def _assign_keywords_to_bullets(
@@ -938,27 +626,9 @@ def _build_bullet_briefs(
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
-        # ── Tier 5: Light reframe ─────────────────────────────────────────────
+        # ── Tier 5: Already well-targeted — keep original ────────────────────
         else:
-            present = [kw for kw in priority_keywords if _keyword_in_text(kw, bullet)][:2]
-            req = _best_req(jd_parsed, bullet, focus=req_pool)
-            if present:
-                approach = (
-                    f"Already relevant. Move '{present[0]}' to open the sentence — "
-                    f"it should be the first concept the reader sees.{sibling_note}"
-                    + rules_suffix
-                )
-            else:
-                approach = (
-                    f"Reframe the opening to surface the closest JD theme.{sibling_note} "
-                    f"Leave unchanged only if genuinely unrelated to every JD theme."
-                    + rules_suffix
-                )
-            briefs.append(BulletBrief(
-                requirement=req,
-                approach=approach,
-                exp_context=exp_context,
-            ))
+            briefs.append(BulletBrief(requirement="", approach="", keep_original=True, exp_context=exp_context))
 
     return briefs
 
@@ -1025,14 +695,13 @@ async def tailor_experiences(
 ) -> list[TailoredExperience]:
     """Tailor experiences — one focused API call per bullet, all in parallel."""
     role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
-    jd_summary = _build_jd_summary(jd_parsed)
     domain_guidance = _get_domain_guidance(jd_parsed.get("domain", ""))
     seniority_note = _get_seniority_note(jd_parsed.get("seniority_level", ""))
     coverage = _compute_experience_focus(experiences, jd_parsed)
     _client = get_openai_client()
     _settings = get_settings()
 
-    tailored = list(await asyncio.gather(*[
+    return list(await asyncio.gather(*[
         _tailor_experience_bullets(
             exp, role_context, gap_analysis, jd_parsed, _client, _settings, rules_text,
             focus_requirements=coverage.get(str(exp["id"])),
@@ -1041,12 +710,6 @@ async def tailor_experiences(
         )
         for exp in experiences
     ]))
-
-    await _apply_length_refinements(tailored, jd_summary)
-    _recompute_confidence(tailored)
-    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
-    _reorder_bullets_by_relevance(tailored, priority_keywords)
-    return tailored
 
 
 
@@ -1099,7 +762,6 @@ async def tailor_projects(
         return []
 
     role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
-    jd_summary = _build_jd_summary(jd_parsed)
     domain_guidance = _get_domain_guidance(jd_parsed.get("domain", ""))
     seniority_note = _get_seniority_note(jd_parsed.get("seniority_level", ""))
     _client = get_openai_client()
@@ -1113,16 +775,7 @@ async def tailor_projects(
         )
         for proj in projects
     ])
-    tailored = [r for r in results if r is not None]
-
-    if not tailored:
-        return []
-
-    await _apply_length_refinements(tailored, jd_summary)
-    _recompute_confidence(tailored)
-    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
-    _reorder_bullets_by_relevance(tailored, priority_keywords)
-    return tailored
+    return [r for r in results if r is not None]
 
 
 class TailoredActivity(BaseModel):
@@ -1189,7 +842,6 @@ async def tailor_activities(
         return []
 
     role_context = f"{jd_parsed.get('role_summary', 'N/A')} ({jd_parsed.get('domain', 'N/A')})"
-    jd_summary = _build_jd_summary(jd_parsed)
     domain_guidance = _get_domain_guidance(jd_parsed.get("domain", ""))
     seniority_note = _get_seniority_note(jd_parsed.get("seniority_level", ""))
     _client = get_openai_client()
@@ -1203,16 +855,7 @@ async def tailor_activities(
         )
         for act in activities
     ])
-    tailored = [r for r in results if r is not None]
-
-    if not tailored:
-        return []
-
-    await _apply_length_refinements(tailored, jd_summary)
-    _recompute_confidence(tailored)
-    priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
-    _reorder_bullets_by_relevance(tailored, priority_keywords)
-    return tailored
+    return [r for r in results if r is not None]
 
 
 
