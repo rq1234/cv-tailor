@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import logging
 import re
 import uuid
+
+logger = logging.getLogger(__name__)
 
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import Response
@@ -229,7 +232,8 @@ async def export_pdf(
             detail="PDF compilation is not available on this server. Use 'Save & Open in Overleaf' to download a PDF, or download the .tex file.",
         )
     except RuntimeError as e:
-        raise HTTPException(status_code=500, detail="PDF compilation failed. Try downloading the .tex file instead.")
+        logger.error("PDF compilation failed for cv_version %s: %s", cv_version_id, e)
+        raise HTTPException(status_code=500, detail=f"PDF compilation failed: {str(e)[:200]}")
 
     # Advance application status to "complete" on first successful export
     if app and app.status == "review":

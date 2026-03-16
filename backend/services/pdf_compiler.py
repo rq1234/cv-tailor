@@ -33,7 +33,6 @@ async def compile_latex_to_pdf(latex_content: str) -> bytes:
             proc = await asyncio.create_subprocess_exec(
                 "tectonic",
                 "--keep-logs",
-                "--offline",
                 "--outdir", tmpdir,
                 str(tex_path),
                 stdout=asyncio.subprocess.PIPE,
