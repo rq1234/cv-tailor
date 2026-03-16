@@ -19,8 +19,6 @@ class Settings(BaseSettings):
 
     # ── API keys ──
     openai_api_key: str = Field(default="", alias="OPENAI_API_KEY")
-    firecrawl_api_key: str = Field(default="", alias="FIRECRAWL_API_KEY")
-    rapidapi_key: str = Field(default="", alias="RAPIDAPI_KEY")
     supabase_url: str = Field(default="", alias="SUPABASE_URL")
     supabase_service_key: str = Field(default="", alias="SUPABASE_SERVICE_KEY")
     supabase_jwt_secret: str = Field(default="", alias="SUPABASE_JWT_SECRET")
@@ -50,20 +48,6 @@ class Settings(BaseSettings):
 
     # ── Confidence thresholds ──
     confidence_review_threshold: float = 0.75  # below this → flag for user review
-
-    # ── Input size limits ──
-    jd_max_chars: int = 50_000  # max job description length (characters)
-
-    # ── Draft selector ──
-    domain_boost: float = 0.08
-    max_experiences: int = 6
-    max_bullet_lines: int = 26
-    max_skills: int = 25
-
-    # ── Bullet length limits (characters) ──
-    bullet_target_min: int = 100
-    bullet_target_max: int = 130
-    bullet_max_chars: int = 140
 
     # ── Application limits ──
     max_applications_per_user: int = 20

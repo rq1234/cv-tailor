@@ -17,8 +17,6 @@ def test_settings_defaults():
     assert s.embedding_model == "text-embedding-3-small"
     assert s.temp_parsing == 0.1
     assert s.near_duplicate_threshold == 0.92
-    assert s.max_experiences == 6
-    assert s.max_bullet_lines == 26
 
 
 def test_settings_cors_origins_default():
@@ -37,8 +35,6 @@ def test_settings_override():
         DATABASE_URL="postgresql+asyncpg://localhost/test",
         model_name="gpt-4o-mini",
         temp_parsing=0.5,
-        max_experiences=10,
     )
     assert s.model_name == "gpt-4o-mini"
     assert s.temp_parsing == 0.5
-    assert s.max_experiences == 10

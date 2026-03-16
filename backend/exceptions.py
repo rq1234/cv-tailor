@@ -25,31 +25,3 @@ class NotFoundError(AppError):
 
     status_code = 404
     detail = "Not found"
-
-
-class ForbiddenError(AppError):
-    """Authenticated user is not allowed to perform this action."""
-
-    status_code = 403
-    detail = "Forbidden"
-
-
-class UnprocessableError(AppError):
-    """Request body is structurally valid but semantically incorrect."""
-
-    status_code = 422
-    detail = "Unprocessable request"
-
-
-class PipelineError(AppError):
-    """Tailoring pipeline failed at a specific step."""
-
-    status_code = 500
-    detail = "Pipeline error"
-
-
-class AuthError(AppError):
-    """Token missing, expired, or invalid."""
-
-    status_code = 401
-    detail = "Authentication failed"
