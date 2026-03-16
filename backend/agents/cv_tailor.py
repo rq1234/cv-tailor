@@ -14,6 +14,12 @@ _NUMBER_RE = re.compile(
     re.IGNORECASE,
 )
 
+_PLACEHOLDER_RE = re.compile(r"\[X[^\]]*\]", re.IGNORECASE)  # [X], [X%], [x], [X months], etc.
+
+
+def _has_placeholder(text: str) -> bool:
+    return bool(_PLACEHOLDER_RE.search(text))
+
 def _extract_numbers(text: str) -> set[str]:
     return set(_NUMBER_RE.findall(text))
 
@@ -32,7 +38,8 @@ from backend.utils import extract_bullet_texts, split_description_to_bullets
 
 
 BULLET_SYSTEM = (
-    "You are a CV editor. Rewrite the given bullet to better target the specified job requirement.\n\n"
+    "You are a CV editor. Improve the given bullet to be stronger and more impactful. "
+    "The job requirement tells you what matters to the reader — frame the bullet's real content toward it.\n\n"
     "Format: [Strong action verb] [what you did/built] [tools or context] [measurable result]. "
     "Stop at the result. One concise line.\n\n"
     "Examples:\n"
@@ -41,13 +48,15 @@ BULLET_SYSTEM = (
     "  BAD:  'Led cross-functional projects showcasing leadership and technical expertise'\n"
     "  GOOD: 'Led 5-person team delivering 3 product releases on schedule'\n\n"
     "Rules:\n"
+    "- Keep the candidate's original action and domain — do NOT replace what they did with the job requirement\n"
+    "- Never introduce technologies, tools, or domain terms not already in the original bullet\n"
     "- Never introduce numbers not in the original\n"
     "- Never remove named technologies, tools, or frameworks\n"
     "- Never end with meta-commentary: no 'showcasing', 'demonstrating', 'highlighting', 'leveraging expertise', "
     "'to support objectives', 'aligning with', 'akin to'\n"
     "- Never invent achievements or facts\n"
-    "- If a bullet has an outcome but no number, add a [X%] or [X] placeholder where the metric would go — the user will fill it in\n"
-    "- Output only the rewritten bullet, nothing else"
+    "- If a bullet has an outcome but no number, add a [X] placeholder where the metric would go — the user will fill it in\n"
+    "- Output only the improved bullet, nothing else"
 )
 
 
@@ -129,7 +138,7 @@ async def _tailor_one_bullet(
 
 def _infer_outcome_type(text: str) -> str:
     """Infer outcome type from bullet text without asking the model."""
-    if "[X]" in text or "[x]" in text:
+    if _has_placeholder(text):
         return "placeholder"
     if _extract_numbers(text):
         return "quantified"
@@ -407,7 +416,7 @@ def _score_bullet_candidate(text: str, priority_keywords: list[str]) -> float:
         if _keyword_in_text(kw, text_lower) and not _keyword_in_text(kw, first_six)
     )
     has_result = 1.0 if _NUMBER_RE.search(text) else 0.0
-    has_placeholder = 0.5 if "[X]" in text or "[x]" in text else 0.0
+    has_placeholder = 0.5 if _has_placeholder(text) else 0.0
     good_length = 1.0 if 80 <= len(text) <= 180 else 0.0
     return first_six_score + rest_score + has_result + has_placeholder + good_length
 
@@ -625,10 +634,11 @@ def _build_bullet_briefs(
         else:
             req = _req_list(jd_parsed, focus=req_pool)
             approach = (
-                f"Rewrite as a strong CV bullet targeting whichever requirement above this bullet "
-                f"addresses most honestly. Structure: action verb → what you did → tools/context → result. "
-                f"Make the impact concrete. Add [X%] placeholder if an outcome is implied but unquantified. "
-                f"Do not invent technologies or achievements not in the original."
+                f"Strengthen this bullet for the target role. Keep the original action and domain intact — "
+                f"do not replace what the candidate did with the job requirement. "
+                f"Improve structure (action verb -> what -> tools -> result) and make the impact concrete. "
+                f"Add [X] placeholder if an outcome is implied but unquantified. "
+                f"Target whichever requirement above this bullet addresses most honestly."
                 f"{sibling_note}" + rules_suffix
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
@@ -673,7 +683,7 @@ async def _tailor_experience_bullets(
     suggested = [
         TailoredBullet(
             text=text,
-            has_placeholder="[X]" in text or "[x]" in text,
+            has_placeholder=_has_placeholder(text),
             outcome_type=_infer_outcome_type(text),
         )
         for text in rewritten
@@ -745,7 +755,7 @@ async def _tailor_project_bullets(
     ]))
 
     suggested = [
-        TailoredBullet(text=t, has_placeholder="[X]" in t or "[x]" in t, outcome_type=_infer_outcome_type(t))
+        TailoredBullet(text=t, has_placeholder=_has_placeholder(t), outcome_type=_infer_outcome_type(t))
         for t in rewritten
     ]
     changed = sum(1 for o, s in zip(bullets, suggested) if o != s.text)
@@ -825,7 +835,7 @@ async def _tailor_activity_bullets(
     ]))
 
     suggested = [
-        TailoredBullet(text=t, has_placeholder="[X]" in t or "[x]" in t, outcome_type=_infer_outcome_type(t))
+        TailoredBullet(text=t, has_placeholder=_has_placeholder(t), outcome_type=_infer_outcome_type(t))
         for t in rewritten
     ]
     changed = sum(1 for o, s in zip(bullets, suggested) if o != s.text)
