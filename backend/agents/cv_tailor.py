@@ -305,7 +305,7 @@ def _assign_keywords_to_bullets(
         scores = [_score_keyword_fit(kw, b) for b in bullets]
         ranked = sorted(range(len(scores)), key=lambda i: scores[i], reverse=True)
         for idx in ranked[:max_bullets_per_kw]:
-            if scores[idx] > 0:
+            if scores[idx] >= 2:  # require ≥2 shared words to avoid false-positive injection
                 assignment[idx].append(kw)
     return assignment
 
@@ -606,16 +606,14 @@ def _build_bullet_briefs(
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
-        # ── Tier 5: Bridge to target role ─────────────────────────────────────
+        # ── Tier 5: Strengthen for target role ────────────────────────────────
         else:
             req = _best_req(jd_parsed, bullet, focus=req_pool)
             approach = (
-                f"Reframe to show how this experience is relevant to the target role. "
-                f"Strengthen structure: action verb → what → tools → result. "
-                f"If the bullet has skills (data, ML, Python, analysis, systems) that apply to the "
-                f"job requirement above, draw that connection explicitly. "
-                f"Do not invent technologies or achievements not in the original. "
-                f"Add [X%] placeholder if an outcome is implied but unquantified."
+                f"Rewrite as a strong CV bullet targeting the job requirement above. "
+                f"Structure: action verb → what you did → tools/context → result. "
+                f"Make the impact concrete. Add [X%] placeholder if an outcome is implied but unquantified. "
+                f"Do not invent technologies or achievements not in the original."
                 f"{sibling_note}" + rules_suffix
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))

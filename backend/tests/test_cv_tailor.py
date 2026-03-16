@@ -302,12 +302,18 @@ class TestAssignKeywords:
         assignment = _assign_keywords_to_bullets(bullets, ["Black-Scholes"])
         assert "Black-Scholes" not in assignment.get(0, [])
 
-    def test_positive_fit_score_assigned(self):
-        # "Python scripting" is NOT in any bullet (no substring match), but "Python" appears in bullet 0
-        # so _score_keyword_fit gives score > 0 for bullet 0 → should be assigned
+    def test_single_word_overlap_not_assigned(self):
+        # "Python scripting" has only 1-word overlap with bullet ("Python") → score=1, below threshold
+        # Prevents false-positive injection like "deep learning" into "machine learning" bullets
         bullets = ["Developed Python data pipelines", "Managed AWS infrastructure for deployments"]
         assignment = _assign_keywords_to_bullets(bullets, ["Python scripting"])
-        assert "Python scripting" in assignment.get(0, [])
+        assert "Python scripting" not in assignment.get(0, [])
+
+    def test_two_word_overlap_assigned(self):
+        # "Python data processing" has 2 words matching "Developed Python data pipelines" → score≥2
+        bullets = ["Developed Python data pipelines for ETL", "Managed AWS infrastructure"]
+        assignment = _assign_keywords_to_bullets(bullets, ["Python data processing"])
+        assert "Python data processing" in assignment.get(0, [])
 
     def test_max_bullets_per_kw_respected(self):
         bullets = [
