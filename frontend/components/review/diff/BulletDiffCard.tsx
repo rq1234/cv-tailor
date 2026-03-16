@@ -76,6 +76,7 @@ export function BulletDiffCard({
   const hasPlaceholder = bulletHasPlaceholder(suggested);
   const isEditing = bulletState?.decision === "edit";
   const isReverted = bulletState?.decision === "reject";
+  const isAccepted = bulletState?.decision === "accept";
   const isUnchanged = original.trim() === text.trim();
   const displayText = bulletState?.editedText ? bulletState.editedText : text;
   const dropped = droppedMetrics(original, text);
@@ -106,6 +107,48 @@ export function BulletDiffCard({
     onRegenerateBullet(entryId, idx, hintInput.trim() || undefined);
     setHintInput("");
   };
+
+  // Three-button group: Accept / Reject / Edit
+  const actionButtons = (
+    <div className="flex items-center gap-0.5">
+      <button
+        onClick={() => setBulletDecision(entryId, idx, "accept", bulletState?.editedText)}
+        title="Accept suggestion (A)"
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+          isAccepted
+            ? "bg-emerald-500 text-white shadow-sm shadow-emerald-200"
+            : "text-slate-300 hover:bg-emerald-50 hover:text-emerald-600"
+        }`}
+      >
+        <Check className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Accept</span>
+      </button>
+      <button
+        onClick={() => setBulletDecision(entryId, idx, "reject", bulletState?.editedText)}
+        title="Keep original (R)"
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+          isReverted
+            ? "bg-red-500 text-white shadow-sm shadow-red-200"
+            : "text-slate-300 hover:bg-red-50 hover:text-red-500"
+        }`}
+      >
+        <X className="h-3.5 w-3.5" />
+        <span className="hidden sm:inline">Reject</span>
+      </button>
+      <button
+        onClick={() => setBulletDecision(entryId, idx, "edit", bulletState?.editedText ?? text)}
+        title="Edit manually (E)"
+        className={`inline-flex items-center gap-1 rounded-md px-2 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+          isEditing
+            ? "bg-blue-500 text-white shadow-sm shadow-blue-200"
+            : "text-slate-300 hover:bg-blue-50 hover:text-blue-500"
+        }`}
+      >
+        <Pencil className="h-3 w-3" />
+        <span className="hidden sm:inline">Edit</span>
+      </button>
+    </div>
+  );
 
   // Regenerate input — always visible at the bottom of every card
   const regenerateRow = onRegenerateBullet ? (
@@ -172,11 +215,11 @@ export function BulletDiffCard({
         {/* Original column */}
         <div
           className={`md:border-r border-border/50 p-4 transition-colors duration-200 ${
-            isReverted ? "bg-slate-50" : "bg-muted/20"
+            isReverted ? "bg-emerald-50/60" : "bg-muted/20"
           } ${showOriginal ? "" : "hidden md:block"}`}
         >
-          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2">Original</p>
-          <p className={`text-sm leading-relaxed transition-all ${isReverted ? "text-slate-700" : "text-slate-400"}`}>
+          <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40 mb-2">Original</p>
+          <p className={`text-sm leading-relaxed transition-all ${isReverted ? "text-slate-700 font-medium" : "text-slate-400"}`}>
             {original ? <HighlightedText text={original} /> : <span className="italic">(no original)</span>}
           </p>
         </div>
@@ -184,13 +227,19 @@ export function BulletDiffCard({
         {/* Suggested column */}
         <div
           className={`p-4 transition-colors duration-200 ${
-            isReverted ? "opacity-50" : isEditing ? "bg-primary/5" : "bg-emerald-50/40"
+            isReverted
+              ? "opacity-40"
+              : isEditing
+              ? "bg-blue-50/40"
+              : isAccepted
+              ? "bg-emerald-50/50"
+              : "bg-card"
           }`}
         >
           {/* Header + action buttons */}
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">AI suggestion</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">AI suggestion</p>
               {hasPlaceholder && (
                 <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                   Fill in [X]
@@ -198,42 +247,7 @@ export function BulletDiffCard({
               )}
             </div>
 
-            <div className="flex items-center gap-0.5">
-              {/* Revert ↔ Restore toggle */}
-              {isReverted ? (
-                <button
-                  onClick={() => setBulletDecision(entryId, idx, "accept", bulletState?.editedText)}
-                  title="Restore AI suggestion"
-                  className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-400 hover:bg-emerald-50 hover:text-emerald-600 transition-all duration-150 active:scale-95"
-                >
-                  <Check className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Restore</span>
-                </button>
-              ) : (
-                <button
-                  onClick={() => setBulletDecision(entryId, idx, "reject", bulletState?.editedText)}
-                  title="Revert to original (R)"
-                  className="inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold text-slate-300 hover:bg-red-50 hover:text-red-500 transition-all duration-150 active:scale-95"
-                >
-                  <X className="h-3.5 w-3.5" />
-                  <span className="hidden sm:inline">Revert</span>
-                </button>
-              )}
-
-              {/* Edit */}
-              <button
-                onClick={() => setBulletDecision(entryId, idx, "edit", bulletState?.editedText ?? text)}
-                title="Edit manually (E)"
-                className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
-                  isEditing
-                    ? "bg-primary text-white shadow-sm shadow-primary/20"
-                    : "text-slate-300 hover:bg-primary/8 hover:text-primary"
-                }`}
-              >
-                <Pencil className="h-3 w-3" />
-                <span className="hidden sm:inline">Edit</span>
-              </button>
-            </div>
+            {actionButtons}
           </div>
 
           {/* Bullet text / editor */}
@@ -243,7 +257,7 @@ export function BulletDiffCard({
                 value={bulletState?.editedText || text}
                 onChange={(e) => setBulletDecision(entryId, idx, "edit", e.target.value)}
                 maxLength={600}
-                className="w-full rounded-lg bg-card border border-border focus:border-primary/60 focus:ring-2 focus:ring-primary/15 px-3 py-2.5 text-sm text-foreground leading-relaxed min-h-[72px] resize-none outline-none transition-all duration-150"
+                className="w-full rounded-lg bg-card border border-border/50 focus:border-blue-300 focus:ring-2 focus:ring-blue-100 px-3 py-2.5 text-sm text-foreground leading-relaxed min-h-[72px] resize-none outline-none transition-all duration-150"
               />
               <div className="mt-1.5 flex justify-end">
                 {(() => {
@@ -257,7 +271,7 @@ export function BulletDiffCard({
               </div>
             </>
           ) : (
-            <div className={!isReverted ? "pl-3 border-l-2 border-emerald-400" : ""}>
+            <div className={!isReverted ? "pl-3 border-l-2 border-emerald-400/70" : ""}>
               <p
                 className={`text-sm leading-relaxed transition-all ${
                   isReverted
