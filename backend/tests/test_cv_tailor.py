@@ -463,7 +463,7 @@ class TestBuildBulletBriefs:
         briefs = _build_bullet_briefs(bullets, None, jd_tech, focus_requirements=focus)
         b = briefs[0]
         assert not b.keep_original
-        assert b.requirement == "Optimise database query performance"
+        assert "Optimise database query performance" in b.requirement
 
     def test_empty_bullets_returns_empty(self, jd_tech):
         assert _build_bullet_briefs([], None, jd_tech) == []

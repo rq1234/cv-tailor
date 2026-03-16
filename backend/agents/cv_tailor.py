@@ -469,6 +469,7 @@ def _best_req(jd_parsed: dict, bullet: str = "", focus: list[str] | None = None)
     """Return the single JD key responsibility most relevant to the bullet (or the first).
 
     If focus is provided, picks from that restricted list instead of all key_responsibilities.
+    Used for tiers where a specific requirement must be named (Tier 1b, 2, 3).
     """
     key_resps = focus if focus else jd_parsed.get("key_responsibilities", [])
     if not key_resps:
@@ -476,6 +477,19 @@ def _best_req(jd_parsed: dict, bullet: str = "", focus: list[str] | None = None)
     if not bullet:
         return key_resps[0]
     return max(key_resps, key=lambda r: _similarity(bullet.lower(), r.lower()))
+
+
+def _req_list(jd_parsed: dict, focus: list[str] | None = None) -> str:
+    """Format key responsibilities as a numbered list for the LLM to choose from.
+
+    Used for Tier 4 and Tier 5 where the LLM should pick the most relevant
+    requirement itself — more accurate than SequenceMatcher pre-selection.
+    Falls back to role_summary if no responsibilities are available.
+    """
+    resps = focus if focus else jd_parsed.get("key_responsibilities", [])
+    if not resps:
+        return jd_parsed.get("role_summary", "the role requirements")
+    return "\n".join(f"{i+1}. {r}" for i, r in enumerate(resps))
 
 
 def _build_bullet_briefs(
@@ -596,22 +610,23 @@ def _build_bullet_briefs(
         # ── Tier 4: Keyword injection ─────────────────────────────────────────
         elif keyword_assignment.get(idx):
             assigned = keyword_assignment[idx]
-            req = _best_req(jd_parsed, bullet, focus=req_pool)
+            req = _req_list(jd_parsed, focus=req_pool)
             present = [kw for kw in priority_keywords if _keyword_in_text(kw, bullet)][:2]
             keep_note = f" Keep: {', '.join(present)}." if present else ""
             approach = (
                 f"The bullet is missing: {', '.join(assigned)}. "
-                f"Restructure so these appear naturally in the action or outcome.{keep_note}{sibling_note}"
+                f"Restructure so these appear naturally in the action or outcome.{keep_note} "
+                f"Target whichever requirement above this bullet addresses most honestly.{sibling_note}"
                 + rules_suffix
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
         # ── Tier 5: Strengthen for target role ────────────────────────────────
         else:
-            req = _best_req(jd_parsed, bullet, focus=req_pool)
+            req = _req_list(jd_parsed, focus=req_pool)
             approach = (
-                f"Rewrite as a strong CV bullet targeting the job requirement above. "
-                f"Structure: action verb → what you did → tools/context → result. "
+                f"Rewrite as a strong CV bullet targeting whichever requirement above this bullet "
+                f"addresses most honestly. Structure: action verb → what you did → tools/context → result. "
                 f"Make the impact concrete. Add [X%] placeholder if an outcome is implied but unquantified. "
                 f"Do not invent technologies or achievements not in the original."
                 f"{sibling_note}" + rules_suffix
