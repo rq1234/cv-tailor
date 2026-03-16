@@ -606,15 +606,15 @@ def _build_bullet_briefs(
             )
             briefs.append(BulletBrief(requirement=req, approach=approach, exp_context=exp_context))
 
-        # ── Tier 5: Surface transferable skills (was: keep original) ─────────
+        # ── Tier 5: Bridge to target role ─────────────────────────────────────
         else:
             req = _best_req(jd_parsed, bullet, focus=req_pool)
-            domain = jd_parsed.get("domain", "the target role")
             approach = (
-                f"Surface transferable skills for this role. "
-                f"Strengthen structure: action verb → what you did → tools/context → result. "
-                f"Do NOT inject {domain}-specific keywords not already in the original — "
-                f"keep the candidate's actual domain context. "
+                f"Reframe to show how this experience is relevant to the target role. "
+                f"Strengthen structure: action verb → what → tools → result. "
+                f"If the bullet has skills (data, ML, Python, analysis, systems) that apply to the "
+                f"job requirement above, draw that connection explicitly. "
+                f"Do not invent technologies or achievements not in the original. "
                 f"Add [X%] placeholder if an outcome is implied but unquantified."
                 f"{sibling_note}" + rules_suffix
             )
