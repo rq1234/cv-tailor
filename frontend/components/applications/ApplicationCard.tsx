@@ -129,12 +129,9 @@ export default function ApplicationCard({
 
           {/* Status badge */}
           <span className={`shrink-0 inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 ${statusBadgeClass}`}>
-            <span className={`h-1.5 w-1.5 rounded-full ${
-              app.status === "complete" ? "bg-emerald-500" :
-              app.status === "review" ? "bg-violet-500" :
-              app.status === "tailoring" ? "bg-primary animate-pulse" :
-              "bg-slate-400"
-            }`} />
+            {app.status === "tailoring" && (
+              <span className="h-1.5 w-1.5 rounded-full bg-primary animate-pulse" />
+            )}
             {isRetailoring ? "Re-tailoring…" : status.label}
           </span>
         </div>

@@ -111,19 +111,18 @@ export function BulletDiffCard({
     try { localStorage.setItem(SWIPE_HINT_KEY, "1"); } catch { /* ignore */ }
   };
 
-  // Outer flash overlay
+  // Flash overlay (swipe/click feedback)
   const flashOverlay =
     swipeFlash === "accept" || clickFlash === "accept"
-      ? "ring-2 ring-inset ring-emerald-300 bg-emerald-50/40"
+      ? "ring-2 ring-inset ring-emerald-300"
       : swipeFlash === "reject" || clickFlash === "reject"
-      ? "ring-2 ring-inset ring-red-300 bg-red-50/40"
+      ? "ring-2 ring-inset ring-red-300"
       : "";
 
-  // Row background based on decision
-  const rowBg = isAccepted
-    ? "bg-emerald-50/60"
-    : isRejected
-    ? "bg-red-50/50"
+  // Per-column backgrounds based on decision
+  const origColBg = isRejected ? "bg-slate-50" : "bg-muted/20";
+  const suggColBg = isAccepted
+    ? "bg-emerald-50/70"
     : isEditing
     ? "bg-primary/5"
     : "";
@@ -131,24 +130,24 @@ export function BulletDiffCard({
   return (
     <div
       data-bullet-id={`${entryId}-${idx}`}
-      className={`grid grid-cols-1 md:grid-cols-2 gap-0 transition-colors duration-200 ${rowBg} ${isFocused ? "ring-2 ring-inset ring-blue-400" : ""} ${flashOverlay}`}
+      className={`grid grid-cols-1 md:grid-cols-2 gap-0 transition-colors duration-200 ${isFocused ? "ring-2 ring-inset ring-blue-400" : ""} ${flashOverlay}`}
       onTouchStart={handleTouchStart}
       onTouchEnd={handleTouchEnd}
     >
       {/* Original column */}
-      <div className={`md:border-r border-border/50 p-4 bg-muted/20 ${showOriginal ? "border-b md:border-b-0" : "hidden md:block"}`}>
-        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60 mb-2">Original</p>
-        <p className={`text-sm text-slate-500 leading-relaxed ${isAccepted || isRejected ? "opacity-60" : ""}`}>
+      <div className={`md:border-r border-border/50 p-4 transition-colors duration-200 ${origColBg} ${showOriginal ? "border-b md:border-b-0" : "hidden md:block"}`}>
+        <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50 mb-2">Original</p>
+        <p className={`text-sm leading-relaxed transition-all ${isRejected ? "text-slate-700" : "text-slate-500"}`}>
           {original ? <HighlightedText text={original} /> : <span className="italic">(no original)</span>}
         </p>
       </div>
 
       {/* Suggested column */}
-      <div className="p-4">
+      <div className={`p-4 transition-colors duration-200 ${suggColBg}`}>
         {/* Header: label + decision buttons */}
         <div className="flex items-center justify-between mb-2.5">
           <div className="flex items-center gap-2">
-            <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground/60">Suggested</p>
+            <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/50">Suggested</p>
             {hasPlaceholder && (
               <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                 Fill in [X]
@@ -162,38 +161,38 @@ export function BulletDiffCard({
           </div>
 
           {/* Decision buttons */}
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5">
             <button
               onClick={() => { setBulletDecision(entryId, idx, "accept", bulletState?.editedText); flashClick("accept"); }}
               title="Accept (A)"
-              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isAccepted
-                  ? "bg-emerald-500 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-emerald-50 hover:text-emerald-700 hover:shadow-sm"
+                  ? "bg-emerald-500 text-white shadow-sm shadow-emerald-200"
+                  : "text-slate-300 hover:bg-emerald-50 hover:text-emerald-600"
               }`}
             >
-              <Check className="h-3 w-3" />
+              <Check className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Accept</span>
             </button>
             <button
               onClick={() => { setBulletDecision(entryId, idx, "reject", bulletState?.editedText); flashClick("reject"); }}
               title="Reject (R)"
-              className={`inline-flex items-center gap-1 rounded-lg px-3 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isRejected
-                  ? "bg-red-500 text-white shadow-sm"
-                  : "text-slate-400 hover:bg-red-50 hover:text-red-700 hover:shadow-sm"
+                  ? "bg-red-500 text-white shadow-sm shadow-red-200"
+                  : "text-slate-300 hover:bg-red-50 hover:text-red-600"
               }`}
             >
-              <X className="h-3 w-3" />
+              <X className="h-3.5 w-3.5" />
               <span className="hidden sm:inline">Reject</span>
             </button>
             <button
               onClick={() => setBulletDecision(entryId, idx, "edit", bulletState?.editedText ?? text)}
               title="Edit (E)"
-              className={`inline-flex items-center gap-1 rounded-lg px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
+              className={`inline-flex items-center gap-1 rounded-md px-2.5 py-1.5 text-xs font-semibold transition-all duration-150 active:scale-95 ${
                 isEditing
-                  ? "bg-primary text-white shadow-sm"
-                  : "text-slate-400 hover:bg-primary/8 hover:text-primary hover:shadow-sm"
+                  ? "bg-primary text-white shadow-sm shadow-primary/20"
+                  : "text-slate-300 hover:bg-primary/8 hover:text-primary"
               }`}
             >
               <Pencil className="h-3 w-3" />
@@ -264,11 +263,11 @@ export function BulletDiffCard({
             <p
               className={`text-sm leading-relaxed transition-all ${
                 isRejected
-                  ? "line-through text-slate-400"
+                  ? "line-through text-slate-300"
                   : isAccepted
                   ? isChanged
                     ? hasPlaceholder
-                      ? "text-amber-800"
+                      ? "text-amber-800 font-medium"
                       : "text-emerald-800 font-medium"
                     : "text-slate-700"
                   : isChanged
