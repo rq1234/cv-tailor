@@ -156,21 +156,21 @@ export function BulletDiffCard({
       <button
         onClick={() => handleRegenerate()}
         disabled={!!regeneratingBullet}
-        title="Regenerate without a note"
-        className="shrink-0 disabled:opacity-50 transition-colors"
+        className={`shrink-0 inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium transition-all disabled:opacity-40 ${
+          isRegenerating
+            ? "text-blue-500"
+            : "text-slate-400 hover:text-blue-500 hover:bg-blue-50"
+        }`}
       >
-        <RefreshCw
-          className={`h-3 w-3 transition-colors ${
-            isRegenerating ? "animate-spin text-blue-400" : "text-slate-300 hover:text-blue-400"
-          }`}
-        />
+        <RefreshCw className={`h-3 w-3 ${isRegenerating ? "animate-spin" : ""}`} />
+        {isRegenerating ? "Retrying…" : "Retry"}
       </button>
       <input
         type="text"
         value={hintInput}
         onChange={(e) => setHintInput(e.target.value)}
         onKeyDown={(e) => { if (e.key === "Enter") handleRegenerate(); }}
-        placeholder={isUnchanged ? "Try a different angle... (Enter)" : "Add a note and press Enter, or click ↻ to retry"}
+        placeholder="Add a note to guide the retry…"
         disabled={!!regeneratingBullet}
         className="flex-1 text-xs bg-transparent outline-none text-slate-500 placeholder:text-slate-300 disabled:opacity-50"
       />
