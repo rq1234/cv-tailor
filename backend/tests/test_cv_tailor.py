@@ -539,30 +539,6 @@ class TestTailorOneBullet:
         assert result == original
 
     @pytest.mark.asyncio
-    async def test_quality_gate_rejects_banned_phrases(self):
-        """Candidate with banned trailing phrase → rejected."""
-        original = "Built Python ETL pipeline ingesting data from multiple sources"
-        client = _make_async_client(
-            "Built Python ETL pipeline showcasing strong data engineering skills",
-            "Built Python ETL pipeline showcasing strong data engineering skills",
-        )
-        brief = BulletBrief(requirement="Build ETL", approach="Improve")
-        result = await _tailor_one_bullet(original, brief, "Role", client, _make_settings())
-        assert result == original
-
-    @pytest.mark.asyncio
-    async def test_quality_gate_rejects_lost_tech_terms(self):
-        """Candidate that drops CamelCase tech term → rejected."""
-        original = "Built FastAPI service with PostgreSQL database for backend API"
-        client = _make_async_client(
-            "Built service with database for backend API processing",  # drops FastAPI, PostgreSQL
-            "Built service with database for backend API processing",
-        )
-        brief = BulletBrief(requirement="Build APIs", approach="Improve")
-        result = await _tailor_one_bullet(original, brief, "Role", client, _make_settings())
-        assert result == original
-
-    @pytest.mark.asyncio
     async def test_domain_guidance_included_in_system_prompt(self, jd_quant):
         """Domain guidance should be in the system message sent to API."""
         from backend.agents.domain_guidance import _get_domain_guidance

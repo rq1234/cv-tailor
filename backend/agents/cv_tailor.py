@@ -85,14 +85,16 @@ BULLET_SYSTEM = (
     "You are a CV editor. Rewrite the given bullet to better target the specified job requirement.\n\n"
     "Format: [Strong action verb] [what you did/built] [tools or context] [measurable result]. "
     "Stop at the result. One concise line.\n\n"
-    "Example:\n"
+    "Examples:\n"
     "  BAD:  'Worked on data pipelines leveraging strong Python skills to support business objectives'\n"
     "  GOOD: 'Built Python ETL pipeline ingesting 50 GB daily, reducing reporting latency by 40%'\n\n"
+    "  BAD:  'Led cross-functional projects showcasing leadership and technical expertise'\n"
+    "  GOOD: 'Led 5-person team delivering 3 product releases on schedule'\n\n"
     "Rules:\n"
     "- Never introduce numbers not in the original\n"
     "- Never remove named technologies, tools, or frameworks\n"
-    "- Never add trailing phrases like 'akin to X', 'involving both', 'aligning with', "
-    "'to support objectives', 'showcasing', 'demonstrating', 'leveraging expertise'\n"
+    "- Never end with meta-commentary: no 'showcasing', 'demonstrating', 'highlighting', 'leveraging expertise', "
+    "'to support objectives', 'aligning with', 'akin to'\n"
     "- Never invent achievements or facts\n"
     "- If a bullet has an outcome but no number, add a [X%] or [X] placeholder where the metric would go — the user will fill it in\n"
     "- Output only the rewritten bullet, nothing else"
@@ -149,42 +151,28 @@ async def _tailor_one_bullet(
 
     kws = priority_keywords or []
 
-    for _attempt in range(3):
-        try:
-            response = await client.chat.completions.create(
-                model=settings.model_name,
-                messages=[
-                    {"role": "system", "content": system},
-                    {"role": "user", "content": prompt},
-                ],
-                n=2,
-                temperature=settings.temp_tailoring,
-                max_tokens=220,
-            )
+    try:
+        response = await client.chat.completions.create(
+            model=settings.model_name,
+            messages=[
+                {"role": "system", "content": system},
+                {"role": "user", "content": prompt},
+            ],
+            n=2,
+            temperature=settings.temp_tailoring,
+            max_tokens=220,
+        )
 
-            valid: list[str] = []
-            for choice in response.choices:
-                result = (
-                    (choice.message.content or "")
-                    .strip()
-                    .strip("\"'")
-                    .lstrip("- ")
-                    .strip()
-                )
-                if (
-                    result
-                    and not _has_lost_tech_terms(original, result)
-                    and not _has_hallucinated_numbers(original, result)
-                    and not _BANNED_PHRASE_RE.search(result)
-                    and not _is_over_compressed(original, result)
-                ):
-                    valid.append(result)
+        candidates = [
+            (choice.message.content or "").strip().strip("\"'").lstrip("- ").strip()
+            for choice in response.choices
+        ]
+        valid = [r for r in candidates if r and not _has_hallucinated_numbers(original, r)]
+        if valid:
+            return max(valid, key=lambda t: _score_bullet_candidate(t, kws))
 
-            if valid:
-                return max(valid, key=lambda t: _score_bullet_candidate(t, kws))
-
-        except Exception:
-            break
+    except Exception:
+        pass
 
     return original
 
