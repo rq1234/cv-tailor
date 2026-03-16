@@ -468,21 +468,31 @@ Outcome Signals: {', '.join(jd_parsed.get('outcome_signals', []))}
 """
 
 
+def _recompute_confidence(tailored_list: list) -> None:
+    """Recompute confidence for each entry based on final suggested texts vs originals."""
+    for entry in tailored_list:
+        n = len(entry.original_bullets)
+        if not n:
+            entry.confidence = 0.5
+            continue
+        changed = sum(
+            1 for o, s in zip(entry.original_bullets, entry.suggested_bullets)
+            if o.strip() != s.text.strip()
+        )
+        entry.confidence = round(changed / n, 2)
+
+
 async def _apply_length_refinements(
     tailored_list: list,
     jd_summary: str,
-    trim_low: int = 95,
-    trim_high: int = 135,
 ) -> None:
-    """Run trim/expand corrections on all bullets in parallel, updating in-place."""
+    """Run trim/expand corrections on truly short (<60 chars) or very long (>200 chars) bullets."""
     pending: list[tuple[int, int, object]] = []
     for ei, entry in enumerate(tailored_list):
         for bi, (orig, suggested) in enumerate(
             zip(entry.original_bullets, entry.suggested_bullets)
         ):
-            if trim_low <= len(suggested.text) <= trim_high:
-                coro = _trim_just_over_line(orig, suggested, jd_summary)
-            elif len(suggested.text) < 100:
+            if len(suggested.text) < 60:
                 coro = _expand_short_bullet(orig, suggested, jd_summary)
             elif len(suggested.text) > 200:
                 coro = _trim_long_bullet(orig, suggested, jd_summary)
@@ -1049,7 +1059,8 @@ async def tailor_experiences(
         for exp in experiences
     ]))
 
-    await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
+    await _apply_length_refinements(tailored, jd_summary)
+    _recompute_confidence(tailored)
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
     return tailored
@@ -1124,7 +1135,8 @@ async def tailor_projects(
     if not tailored:
         return []
 
-    await _apply_length_refinements(tailored, jd_summary, trim_low=105, trim_high=145)
+    await _apply_length_refinements(tailored, jd_summary)
+    _recompute_confidence(tailored)
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
     return tailored
@@ -1213,7 +1225,8 @@ async def tailor_activities(
     if not tailored:
         return []
 
-    await _apply_length_refinements(tailored, jd_summary, trim_low=95, trim_high=135)
+    await _apply_length_refinements(tailored, jd_summary)
+    _recompute_confidence(tailored)
     priority_keywords = jd_parsed.get("required_skills", []) + jd_parsed.get("keywords", [])
     _reorder_bullets_by_relevance(tailored, priority_keywords)
     return tailored
