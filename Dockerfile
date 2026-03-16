@@ -29,8 +29,6 @@ RUN printf '%s\n' \
     '\usepackage{fancyhdr}' \
     '\usepackage[english]{babel}' \
     '\usepackage{tabularx}' \
-    '\input{glyphtounicode}' \
-    '\pdfgentounicode=1' \
     '\begin{document}warmup\end{document}' \
     > /tmp/warmup.tex \
     && tectonic /tmp/warmup.tex --outdir /tmp \

@@ -34,7 +34,6 @@ _PREAMBLE = r"""\documentclass[letterpaper,11pt]{article}
 \usepackage{fancyhdr}
 \usepackage[english]{babel}
 \usepackage{tabularx}
-\input{glyphtounicode}
 
 \pagestyle{fancy}
 \fancyhf{}
@@ -58,9 +57,6 @@ _PREAMBLE = r"""\documentclass[letterpaper,11pt]{article}
 \titleformat{\section}{
   \vspace{-4pt}\scshape\raggedright\large
 }{}{0em}{}[\color{black}\titlerule \vspace{-5pt}]
-
-% Ensure that generate pdf is machine readable/ATS parsable
-\pdfgentounicode=1
 
 % Custom commands
 \newcommand{\resumeItem}[1]{
