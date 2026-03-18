@@ -4,7 +4,6 @@ import {
   type BulletState,
   type ExperienceDiff,
   type TailorResult,
-  bulletText,
   getDiffMeta,
 } from "./types";
 
@@ -83,10 +82,9 @@ function SubHeading({
 }
 
 // Bullet list — mirrors \resumeItemListStart / \resumeItem
-function BulletList({ bullets, decisions, diffId, originalBullets }: {
+function BulletList({ bullets, decisions, originalBullets }: {
   bullets: Array<{ text: string; has_placeholder?: boolean } | string>;
   decisions?: Record<number, BulletState>;
-  diffId?: string;
   originalBullets?: string[];
 }) {
   return (
@@ -264,7 +262,6 @@ export default function CvPagePreview({
                     <BulletList
                       bullets={diff.suggested_bullets}
                       decisions={entryDecisions}
-                      diffId={id}
                       originalBullets={diff.original_bullets}
                     />
                   </div>
