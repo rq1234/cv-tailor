@@ -291,11 +291,11 @@ export function BulletDiffCard({
             <p className="mt-2.5 text-[11px] text-amber-700 bg-amber-50 rounded-md px-2 py-1.5 flex items-start gap-1.5">
               <span className="shrink-0 mt-px">⚠</span>
               <span>
-                Not in suggestion:{" "}
+                Numbers from original not carried over:{" "}
                 {dropped.map((m, i) => (
                   <span key={i} className="font-semibold">{m}{i < dropped.length - 1 ? ", " : ""}</span>
                 ))}
-                {" "}— consider adding back
+                {" "}— check the suggestion still makes sense
               </span>
             </p>
           )}

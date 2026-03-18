@@ -56,6 +56,7 @@ BULLET_SYSTEM = (
     "'to support objectives', 'aligning with', 'akin to'\n"
     "- Never invent achievements or facts\n"
     "- If a bullet has an outcome but no number, add a [X] placeholder where the metric would go — the user will fill it in\n"
+    "- Never append a job-relevance tail to connect the bullet to the role (e.g. never add 'qualifying for...', 'relevant to...', 'demonstrating fit for...', 'akin to the role requirements'). The bullet stands on its own merit\n"
     "- Output only the improved bullet, nothing else"
 )
 
