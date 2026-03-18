@@ -140,8 +140,6 @@ export default function CvPagePreview({
   decisions,
   manualEdits = {},
 }: CvPagePreviewProps) {
-  const profile = result.profile;
-
   const sections = [
     { label: "Experience", entries: experienceDiffs },
     { label: "Projects", entries: projectDiffs },
@@ -194,22 +192,6 @@ export default function CvPagePreview({
         </div>
 
         <div style={contentStyle}>
-          {/* ── Header: name + contact ── */}
-          {profile && (
-            <div style={{ textAlign: "center", marginBottom: 8 }}>
-              {profile.full_name && (
-                <div style={{ fontSize: "20pt", fontWeight: "bold", fontVariant: "small-caps", letterSpacing: "0.04em" }}>
-                  {profile.full_name}
-                </div>
-              )}
-              <div style={{ fontSize: "10pt", marginTop: 2, color: "#222" }}>
-                {[profile.phone, profile.location, profile.email]
-                  .filter(Boolean)
-                  .join("  ·  ")}
-              </div>
-            </div>
-          )}
-
           {/* ── Education ── */}
           {result.education_data?.length > 0 && (
             <div>
