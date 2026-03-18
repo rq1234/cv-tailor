@@ -12,14 +12,14 @@ interface PipelineStep {
 }
 
 const PIPELINE_STAGES = [
-  { key: "parsing_jd",            label: "Reading the job description" },
-  { key: "selecting_experiences", label: "Picking the most relevant experience" },
-  { key: "baseline_ats_check",    label: "Scoring your current CV" },
-  { key: "analyzing_gaps",        label: "Matching your experience to the role" },
-  { key: "tailoring_cv",          label: "Rewriting your bullets" },
-  { key: "tailoring_projects",    label: "Rewriting projects & activities" },
-  { key: "checking_ats",          label: "Checking keyword coverage" },
-  { key: "saving",                label: "Saving your CV" },
+  { key: "parsing_jd",            label: "Parsing job description" },
+  { key: "selecting_experiences", label: "Selecting best experiences" },
+  { key: "baseline_ats_check",    label: "Checking baseline ATS score" },
+  { key: "analyzing_gaps",        label: "Mapping experience to requirements" },
+  { key: "tailoring_cv",          label: "Tailoring bullet points" },
+  { key: "tailoring_projects",    label: "Tailoring projects & activities" },
+  { key: "checking_ats",          label: "Checking ATS compliance" },
+  { key: "saving",                label: "Saving results" },
 ];
 
 interface PipelineProgressProps {
@@ -60,7 +60,7 @@ export default function PipelineProgress({ steps, error, onRetry }: PipelineProg
     <div className="space-y-5">
       <div>
         <div className="flex items-center justify-between mb-1.5">
-          <h2 className="text-lg font-semibold">Working on your CV</h2>
+          <h2 className="text-lg font-semibold">Tailoring in Progress</h2>
           {elapsedLabel && !isDone && (
             <span className="text-xs text-slate-400">{elapsedLabel}</span>
           )}

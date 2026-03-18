@@ -239,7 +239,7 @@ export function BulletDiffCard({
           {/* Header + action buttons */}
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-2">
-              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">Suggestion</p>
+              <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/40">AI suggestion</p>
               {hasPlaceholder && (
                 <span className="inline-flex items-center rounded-full bg-amber-100 px-1.5 py-0.5 text-[10px] font-semibold text-amber-700">
                   Fill in [X]

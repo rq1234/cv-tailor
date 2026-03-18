@@ -6,7 +6,7 @@ import { useAuthStore } from "@/store/authStore";
 import { api } from "@/lib/api";
 
 const benefits = [
-  "Your existing bullets rewritten to match what the job actually asks for",
+  "AI rewrites your existing bullets — not generic templates",
   "Review and accept every change before it goes in your CV",
   "Exports polished LaTeX straight to Overleaf in one click",
 ];
@@ -111,7 +111,7 @@ export default function LoginPage() {
       <div className="hidden lg:flex lg:w-[42%] flex-col justify-between bg-zinc-900 p-10 text-white">
         <div>
           <div className="text-xl font-bold">CV Tailor</div>
-          <p className="mt-0.5 text-xs text-zinc-400">CV tailoring that actually works</p>
+          <p className="mt-0.5 text-xs text-zinc-400">AI-powered CV tailoring</p>
         </div>
 
         <div className="space-y-6">
