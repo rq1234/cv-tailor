@@ -7,7 +7,7 @@ import { useReviewKeyboard, buildFlatBullets } from "@/hooks/useReviewKeyboard";
 import ReviewToolbar from "@/components/review/ReviewToolbar";
 import PlaceholderBanner from "@/components/review/PlaceholderBanner";
 import DiffView from "@/components/review/DiffView";
-import PreviewView from "@/components/review/PreviewView";
+import CvPagePreview from "@/components/review/CvPagePreview";
 import { Download } from "lucide-react";
 import { SkeletonBulletCard } from "@/components/ui/Skeleton";
 
@@ -221,15 +221,13 @@ export default function ReviewPage() {
       </div>
 
       {viewMode === "preview" && (
-        <PreviewView
+        <CvPagePreview
           result={result}
           experienceDiffs={experienceDiffs}
           projectDiffs={projectDiffs}
           activityDiffs={activityDiffs}
           decisions={decisions}
-          setBulletDecision={setBulletDecision}
           manualEdits={manualEdits}
-          setManualEdit={setManualEdit}
         />
       )}
 
