@@ -79,7 +79,7 @@ const steps = [
     number: "2",
     title: "Paste the job description",
     description:
-      "Enter the company, role, and JD. Our AI picks the most relevant experience and rewrites bullets to match.",
+      "Enter the company, role, and JD. We pick the most relevant entries from your history and rewrite the bullets to match.",
   },
   {
     number: "3",
@@ -124,18 +124,18 @@ export default function LandingPage() {
         {/* Left: copy */}
         <div>
           <div className="mb-4 inline-flex items-center rounded-full border bg-muted px-3 py-1 text-xs text-muted-foreground">
-            AI-powered · Free to get started
+            Free to get started · No credit card
           </div>
           <h1 className="text-4xl font-bold tracking-tight sm:text-5xl leading-tight">
             Land more interviews.{" "}
             <span className="text-muted-foreground">
-              Stop rewriting your CV from scratch.
+              Stop rewriting your CV for every job.
             </span>
           </h1>
           <p className="mt-5 text-lg text-muted-foreground leading-relaxed">
             Paste a job description. CV Tailor rewrites your existing bullet
-            points to match — then exports a polished LaTeX CV straight to
-            Overleaf in one click.
+            points to match the role — then exports a polished LaTeX CV straight
+            to Overleaf in one click.
           </p>
           <div className="mt-8 flex flex-wrap gap-3">
             <Link
@@ -153,9 +153,6 @@ export default function LandingPage() {
           </div>
           <p className="mt-3 text-xs text-muted-foreground">
             No credit card required.
-          </p>
-          <p className="mt-2 text-sm font-medium text-primary">
-            CVTailorAlpha is coming soon.
           </p>
         </div>
 
