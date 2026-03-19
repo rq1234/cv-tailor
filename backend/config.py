@@ -49,8 +49,12 @@ class Settings(BaseSettings):
     # ── Confidence thresholds ──
     confidence_review_threshold: float = 0.75  # below this → flag for user review
 
-    # ── Application limits ──
-    max_applications_per_user: int = 20
+    # ── Master account (exempt from all usage limits) ──
+    master_account_email: str = Field(default="rongquan.yeo@gmail.com", alias="MASTER_ACCOUNT_EMAIL")
+
+    # ── Usage limits ──
+    max_applications_per_user: int = 10
+    max_bullet_regens_per_user: int = 100
 
     # ── Pipeline timeouts (seconds) ──
     pipeline_timeout_s: int = 600

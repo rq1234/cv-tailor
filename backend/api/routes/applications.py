@@ -14,7 +14,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.api.auth import get_current_user
 from backend.clients import get_openai_client
-from backend.api.db_helpers import delete_or_404, get_or_404
+from backend.api.db_helpers import delete_or_404, get_or_404, is_master_account
 from backend.config import get_settings
 from backend.enums import ApplicationStatus
 from backend.models.database import get_db
@@ -50,16 +50,17 @@ async def create_application(
     user_id: uuid.UUID = Depends(get_current_user),
 ):
     """Create a new job application with raw JD."""
-    count_result = await db.execute(
-        select(func.count(Application.id)).where(Application.user_id == user_id)
-    )
-    application_count = count_result.scalar_one()
-    max_apps = get_settings().max_applications_per_user
-    if application_count >= max_apps:
-        raise HTTPException(
-            status_code=400,
-            detail=f"Application limit reached ({max_apps}). Delete an old application to create a new one.",
+    if not await is_master_account(db, user_id):
+        count_result = await db.execute(
+            select(func.count(Application.id)).where(Application.user_id == user_id)
         )
+        application_count = count_result.scalar_one()
+        max_apps = get_settings().max_applications_per_user
+        if application_count >= max_apps:
+            raise HTTPException(
+                status_code=400,
+                detail=f"Application limit reached ({max_apps}). Delete an old application to create a new one.",
+            )
 
     app = Application(
         user_id=user_id,

@@ -28,10 +28,11 @@ from backend.api.db_helpers import (
     fetch_skills_data,
     find_similar_applications,
     get_or_404,
+    is_master_account,
 )
 from backend.config import get_settings
 from backend.models.database import get_db
-from backend.models.tables import Activity, Application, CvVersion, Project, WorkExperience
+from backend.models.tables import Activity, Application, CvProfile, CvVersion, Project, WorkExperience
 from backend.schemas.pydantic import AcceptChangesRequest, PipelineStatusOut, RegenerateBulletRequest, TailorRunRequest
 
 logger = logging.getLogger(__name__)
@@ -602,6 +603,20 @@ async def regenerate_bullet(
 
     Does not persist the result — the frontend patches its local state.
     """
+    # 0. Check regen limit (skip for master account)
+    if not await is_master_account(db, user_id):
+        profile_result = await db.execute(
+            select(CvProfile).where(CvProfile.user_id == user_id).limit(1)
+        )
+        _profile = profile_result.scalar_one_or_none()
+        regens_used = _profile.bullet_regens_used if _profile else 0
+        max_regens = get_settings().max_bullet_regens_per_user
+        if regens_used >= max_regens:
+            raise HTTPException(
+                status_code=429,
+                detail=f"Retry limit reached ({max_regens} total). Contact support to increase your limit.",
+            )
+
     # 1. Fetch application (ownership check + jd_parsed)
     app = await get_or_404(db, Application, body.application_id, user_id, "Application not found")
     if not app.jd_parsed:
@@ -708,6 +723,16 @@ async def regenerate_bullet(
 
     else:
         raise HTTPException(status_code=400, detail=f"Unknown entity type: {entity_type}")
+
+    # Increment regen counter (skip for master account)
+    if not await is_master_account(db, user_id):
+        profile_result = await db.execute(
+            select(CvProfile).where(CvProfile.user_id == user_id).limit(1)
+        )
+        _profile = profile_result.scalar_one_or_none()
+        if _profile:
+            _profile.bullet_regens_used += 1
+            await db.commit()
 
     return {
         "suggested_bullet": {

@@ -8,12 +8,22 @@ from typing import Any, Type, TypeVar
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from backend.config import get_settings
 from backend.enums import ApplicationStatus
 from backend.exceptions import NotFoundError
 from backend.models.tables import Activity, Application, CvProfile, CvVersion, Education, Project, Skill, TailoringRule, WorkExperience
 from backend.schemas.pydantic import JdParsed
 
 T = TypeVar("T")
+
+
+async def is_master_account(db: AsyncSession, user_id: uuid.UUID) -> bool:
+    """Return True if this user is the master account — exempt from all usage limits."""
+    result = await db.execute(
+        select(CvProfile.email).where(CvProfile.user_id == user_id).limit(1)
+    )
+    email = result.scalar_one_or_none()
+    return email == get_settings().master_account_email
 
 
 async def get_or_404(

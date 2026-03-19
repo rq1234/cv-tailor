@@ -106,8 +106,14 @@ export function useReviewPage(applicationId: string) {
         };
       });
       setBulletDecision(expId, idx, "accept");
-    } catch (err) {
-      setExportError(err instanceof Error ? err.message : "Failed to regenerate bullet");
+    } catch (err: unknown) {
+      const status = (err as { status?: number; response?: { status?: number } })?.status
+        ?? (err as { status?: number; response?: { status?: number } })?.response?.status;
+      if (status === 429) {
+        setExportError("Retry limit reached — you've used all your bullet regenerations for this account.");
+      } else {
+        setExportError(err instanceof Error ? err.message : "Failed to regenerate bullet");
+      }
     } finally {
       setRegeneratingBullet(null);
     }

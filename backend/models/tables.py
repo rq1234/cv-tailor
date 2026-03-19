@@ -57,6 +57,7 @@ class CvProfile(Base):
     contact_confidence: Mapped[float | None] = mapped_column(Float)
     unstructured_extras: Mapped[dict | None] = mapped_column(JSONB)
     max_resume_pages: Mapped[int] = mapped_column(Integer, default=1)
+    bullet_regens_used: Mapped[int] = mapped_column(Integer, default=0, server_default="0")
     updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
 
