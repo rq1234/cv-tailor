@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import localFont from "next/font/local";
 import "./globals.css";
 import AuthProvider from "@/components/AuthProvider";
+import Footer from "@/components/Footer";
 import NavBar from "@/components/NavBar";
 
 // This app is fully authenticated — disable static generation for all routes.
@@ -38,6 +39,7 @@ export default function RootLayout({
         <AuthProvider>
           <NavBar />
           <main className="mx-auto max-w-7xl px-4 py-8">{children}</main>
+          <Footer />
         </AuthProvider>
       </body>
     </html>

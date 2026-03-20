@@ -14,7 +14,7 @@ from starlette.types import ASGIApp, Receive, Scope, Send
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(name)s %(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
-from backend.api.routes import applications, auth, cv, experiences, export, rules, settings, tailor  # noqa: E402
+from backend.api.routes import account, applications, auth, cv, experiences, export, rules, settings, tailor  # noqa: E402
 from backend.config import get_settings
 from backend.exceptions import AppError
 
@@ -87,6 +87,7 @@ app.add_middleware(
     expose_headers=["Content-Disposition"],
 )
 
+app.include_router(account.router)
 app.include_router(cv.router)
 app.include_router(experiences.router)
 app.include_router(applications.router)

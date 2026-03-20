@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useAuthStore } from "@/store/authStore";
 import ChangePasswordModal from "@/components/ChangePasswordModal";
+import { useDeleteAccount } from "@/hooks/useDeleteAccount";
 import { api } from "@/lib/api";
 
 interface TailoringRule {
@@ -21,6 +22,8 @@ export default function SettingsPage() {
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editText, setEditText] = useState("");
   const [showPasswordModal, setShowPasswordModal] = useState(false);
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const { deleting, error: deleteError, deleteAccount } = useDeleteAccount();
 
   const [maxPages, setMaxPages] = useState<1 | 2>(1);
   const [pagesLoading, setPagesLoading] = useState(true);
@@ -318,10 +321,51 @@ export default function SettingsPage() {
           >
             Sign Out
           </button>
+
+          <div className="border-t pt-4">
+            {deleteError && (
+              <p className="mb-2 text-sm text-red-600">{deleteError}</p>
+            )}
+            <button
+              onClick={() => setShowDeleteConfirm(true)}
+              className="w-full rounded-md border border-red-200 px-3 py-2 text-sm font-medium text-red-600 hover:bg-red-50"
+            >
+              Delete Account
+            </button>
+          </div>
         </div>
       </section>
 
       <ChangePasswordModal isOpen={showPasswordModal} onClose={() => setShowPasswordModal(false)} />
+
+      {/* Delete account confirmation dialog */}
+      {showDeleteConfirm && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
+          <div className="w-full max-w-md rounded-lg bg-white p-6 shadow-xl space-y-4">
+            <h2 className="text-lg font-semibold">Delete account?</h2>
+            <p className="text-sm text-muted-foreground">
+              This will permanently delete all your CV data, tailoring history, and applications.
+              Your account cannot be recovered after deletion.
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                onClick={() => setShowDeleteConfirm(false)}
+                disabled={deleting}
+                className="flex-1 rounded-md border px-4 py-2 text-sm font-medium hover:bg-gray-50 disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={deleteAccount}
+                disabled={deleting}
+                className="flex-1 rounded-md bg-red-600 px-4 py-2 text-sm font-medium text-white hover:bg-red-700 disabled:opacity-50"
+              >
+                {deleting ? "Deleting…" : "Yes, delete everything"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
