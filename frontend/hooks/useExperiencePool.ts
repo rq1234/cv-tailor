@@ -9,8 +9,9 @@ export function useExperiencePool() {
   const { pool, poolLoading, setPool, setPoolLoading } = useAppStore();
   const [poolError, setPoolError] = useState<string | null>(null);
 
-  const fetchPool = useCallback(async () => {
-    setPoolLoading(true);
+  const fetchPool = useCallback(async ({ silent = false }: { silent?: boolean } = {}) => {
+    // If we already have cached data, don't show a spinner — refresh silently in background
+    if (!silent) setPoolLoading(true);
     setPoolError(null);
     try {
       const data = await api.get<ExperiencePool>("/api/cv/pool");
@@ -20,7 +21,7 @@ export function useExperiencePool() {
       const msg = error instanceof Error ? error.message : "Failed to load";
       console.error("Failed to fetch experience pool:", msg);
       setPoolError(msg);
-      setPool({ work_experiences: [], education: [], projects: [], activities: [], skills: [], profile: null });
+      if (!silent) setPool({ work_experiences: [], education: [], projects: [], activities: [], skills: [], profile: null });
     } finally {
       setPoolLoading(false);
     }

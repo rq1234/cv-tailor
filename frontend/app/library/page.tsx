@@ -111,8 +111,8 @@ export default function LibraryPage() {
   };
 
   useEffect(() => {
-    fetchPool();
-  }, [fetchPool]);
+    fetchPool({ silent: !!pool });
+  }, [fetchPool]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (poolLoading) {
     return (
