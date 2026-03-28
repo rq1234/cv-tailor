@@ -129,7 +129,7 @@ export default function LibraryPage() {
         <p className="text-sm font-medium text-red-600">Could not connect to backend</p>
         <p className="text-xs text-muted-foreground max-w-sm text-center">{poolError}</p>
         <button
-          onClick={fetchPool}
+          onClick={() => fetchPool()}
           className="rounded-md border px-3 py-1.5 text-sm hover:bg-muted"
         >
           Retry
