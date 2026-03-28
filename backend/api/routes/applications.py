@@ -82,7 +82,9 @@ class ScreenshotExtractResponse(BaseModel):
 
 
 @router.post("/screenshot", response_model=ScreenshotExtractResponse)
+@limiter.limit("10/hour")
 async def extract_screenshot_text(
+    request: Request,
     file: UploadFile,
     user_id: uuid.UUID = Depends(get_current_user),
 ):
@@ -269,6 +271,18 @@ async def get_gap_recommendations(
     return {"recommendations": filtered}
 
 
+_SSRF_BLOCKED_PREFIXES = (
+    "http://localhost", "https://localhost",
+    "http://127.", "https://127.",
+    "http://0.", "https://0.",
+    "http://10.", "https://10.",
+    "http://172.16.", "https://172.16.",
+    "http://192.168.", "https://192.168.",
+    "http://169.254.", "https://169.254.",  # AWS metadata service
+    "http://[::1]", "https://[::1]",        # IPv6 loopback
+)
+
+
 class ScrapeUrlRequest(BaseModel):
     url: str = Field(min_length=8, max_length=2000)
 
@@ -277,6 +291,9 @@ class ScrapeUrlRequest(BaseModel):
     def validate_url_scheme(cls, v: str) -> str:
         if not v.startswith(("http://", "https://")):
             raise ValueError("url must start with http:// or https://")
+        url_lower = v.lower()
+        if any(url_lower.startswith(prefix) for prefix in _SSRF_BLOCKED_PREFIXES):
+            raise ValueError("URL points to a disallowed address")
         return v
 
 
