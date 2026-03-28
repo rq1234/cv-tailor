@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     max_bullet_regens_per_user: int = 100
 
     # ── Pipeline timeouts (seconds) ──
-    pipeline_timeout_s: int = 600
-    pipeline_stale_lock_s: int = 660
+    pipeline_timeout_s: int = 300
+    pipeline_stale_lock_s: int = 180
 
     # ── Embedding cache ──
     embedding_cache_size: int = 2000
