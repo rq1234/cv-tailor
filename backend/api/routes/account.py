@@ -41,12 +41,23 @@ async def delete_account(
     Deletion order respects FK constraints (CvVersion → Application before Application).
     After DB cleanup, the Supabase auth user is deleted so login is no longer possible.
     """
+    # 1. Delete Supabase auth user first — if this fails, DB data is still intact
+    #    and the user can retry. Avoids the worse failure mode of DB gone but auth remains.
     try:
-        # 1. CvVersion has FK to Application — delete first
+        settings = get_settings()
+        supa = create_client(settings.supabase_url, settings.supabase_service_key)
+        supa.auth.admin.delete_user(str(user_id))
+    except Exception as e:
+        logger.error("Supabase auth deletion failed for user %s: %s", user_id, e)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to delete account. Please try again.",
+        ) from e
+
+    # 2. Delete all DB data — auth is already gone so user cannot log back in
+    try:
         await db.execute(delete(CvVersion).where(CvVersion.user_id == user_id))
-        # 2. Application
         await db.execute(delete(Application).where(Application.user_id == user_id))
-        # 3. Remaining user-scoped tables (no FK dependencies between them)
         await db.execute(delete(WorkExperience).where(WorkExperience.user_id == user_id))
         await db.execute(delete(Education).where(Education.user_id == user_id))
         await db.execute(delete(Project).where(Project.user_id == user_id))
@@ -59,20 +70,8 @@ async def delete_account(
         await db.commit()
     except Exception as e:
         await db.rollback()
-        logger.exception("DB deletion failed for user %s", user_id)
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Failed to delete account data. Please try again.",
-        ) from e
-
-    # Delete the Supabase auth user — same pattern as auth.py
-    try:
-        settings = get_settings()
-        supabase = create_client(settings.supabase_url, settings.supabase_service_key)
-        supabase.auth.admin.delete_user(str(user_id))
-    except Exception as e:
-        logger.error("Supabase auth deletion failed for user %s: %s", user_id, e)
-        # DB data is already gone — log but don't surface error to user
-        # (auth account will eventually be cleaned up or can be deleted manually)
+        logger.exception("DB deletion failed for user %s (auth already deleted)", user_id)
+        # Auth is gone — log for manual cleanup but don't block the user
+        logger.error("Orphaned DB data for deleted user %s — manual cleanup required", user_id)
 
     return {"status": "deleted"}

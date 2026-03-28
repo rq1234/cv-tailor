@@ -8,9 +8,11 @@ import uuid
 
 logger = logging.getLogger(__name__)
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from fastapi.responses import Response
 from pydantic import BaseModel, Field
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -21,6 +23,7 @@ from backend.services.exporter import generate_docx, generate_latex
 from backend.services.pdf_compiler import compile_latex_to_pdf
 
 router = APIRouter(prefix="/api/export", tags=["export"])
+limiter = Limiter(key_func=get_remote_address)
 
 
 # ── Cover letter PDF helpers ───────────────────────────────────────────────
@@ -163,7 +166,9 @@ async def _get_cv_version(
 
 
 @router.post("/latex/{cv_version_id}")
+@limiter.limit("20/hour")
 async def export_latex(
+    request: Request,
     cv_version_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
@@ -202,7 +207,9 @@ async def export_latex(
 
 
 @router.post("/pdf/{cv_version_id}")
+@limiter.limit("20/hour")
 async def export_pdf(
+    request: Request,
     cv_version_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
@@ -248,7 +255,9 @@ async def export_pdf(
 
 
 @router.post("/docx/{cv_version_id}")
+@limiter.limit("20/hour")
 async def export_docx(
+    request: Request,
     cv_version_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),
@@ -287,7 +296,9 @@ async def export_docx(
 
 
 @router.post("/overleaf/{cv_version_id}")
+@limiter.limit("20/hour")
 async def export_overleaf(
+    request: Request,
     cv_version_id: uuid.UUID,
     db: AsyncSession = Depends(get_db),
     user_id: uuid.UUID = Depends(get_current_user),

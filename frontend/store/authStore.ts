@@ -93,9 +93,11 @@ export const useAuthStore = create<AuthState>((set) => ({
     }
     // Clear all user-scoped in-memory state so a subsequent login sees a clean slate
     useAppStore.getState().resetForSignOut();
-    // Clear any persisted review edits from localStorage
-    const keysToRemove = Object.keys(localStorage).filter((k) => k.startsWith("cv-edits-"));
-    keysToRemove.forEach((k) => localStorage.removeItem(k));
+    // Clear any persisted review edits from localStorage (guard against private browsing)
+    try {
+      const keysToRemove = Object.keys(localStorage).filter((k) => k.startsWith("cv-edits-"));
+      keysToRemove.forEach((k) => localStorage.removeItem(k));
+    } catch { /* localStorage unavailable (private browsing / quota exceeded) — safe to ignore */ }
     set({ loading: false, user: null, session: null });
   },
   changePassword: async (currentPassword: string, newPassword: string) => {
